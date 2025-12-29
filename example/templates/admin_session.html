@@ -13,7 +13,13 @@
   </div>
 
   <section class="card">
-    <h3>Live-Status</h3>
+    <h3>{{ session.name }}</h3>
+    <div class="muted tiny" style="margin-bottom:1rem;">
+      Status: <span id="status_disp" style="font-weight:bold;color:#3a63ff;">{{ session.status }}</span> •
+      Session ID: <span class="mono">{{ session.id[:16] }}...</span>
+    </div>
+
+    <h4 style="margin-top:1.5rem;margin-bottom:0.5rem;">Live-Status</h4>
     <div class="muted tiny">
       Runde: <span id="round_disp">{{ round_number }}</span> •
       Entschieden: <span id="decided_count">0</span>/<span id="group_size">{{ session.group_size }}</span> •
@@ -30,7 +36,7 @@
             <th>Entschieden</th>
             <th>Wahl</th>
             <th>Bereit</th>
-            <th>Letzte Auszahlung (Runde)</th>
+            <th>Balance</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -45,35 +51,53 @@ const rowsTbody = document.getElementById('rows');
 const decidedCountSpan = document.getElementById('decided_count');
 const readyCountSpan = document.getElementById('ready_count');
 const roundDisp = document.getElementById('round_disp');
+const statusDisp = document.getElementById('status_disp');
 const groupSize = {{ session.group_size }};
 
 async function poll() {
   try {
     const url = "{{ url_for('admin_session_status') }}" + "?session_id=" + encodeURIComponent(sid);
+    console.log('Polling:', url);
     const r = await fetch(url);
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.error('Fetch failed:', r.status);
+      return;
+    }
     const data = await r.json();
+    console.log('Received data:', data);
 
     decidedCountSpan.textContent = data.decided_count ?? 0;
     readyCountSpan.textContent = data.ready_count ?? 0;
     roundDisp.textContent = data.session?.current_round ?? '{{ round_number }}';
 
-    rowsTbody.innerHTML = "";
-    (data.participants || []).forEach((p, idx) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${idx+1}</td>
-        <td>${p.code}</td>
-        <td>${p.round_display}</td>
-        <td>${p.decided ? "✓" : "–"}</td>
-        <td>${p.choice ?? "–"}</td>
-        <td class="${p.ready_for_next ? 'ready-yes' : ''}">${p.ready_for_next ? "✓" : "–"}</td>
-        <td>${(p.balance ?? "")}</td>
-      `;
-      rowsTbody.appendChild(tr);
-    });
+    if (data.session?.status) {
+      statusDisp.textContent = data.session.status;
+    }
 
-  } catch(e) {}
+    rowsTbody.innerHTML = "";
+    if (!data.participants || data.participants.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="7" style="text-align:center;opacity:0.7;">Keine Teilnehmer in dieser Session</td>';
+      rowsTbody.appendChild(tr);
+    } else {
+      data.participants.forEach((p, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${idx+1}</td>
+          <td class="mono">${p.code || '?'}</td>
+          <td>${p.round_display || '?/?'}</td>
+          <td>${p.decided ? "✓" : "–"}</td>
+          <td>${p.choice ?? "–"}</td>
+          <td class="${p.ready_for_next ? 'ready-yes' : ''}">${p.ready_for_next ? "✓" : "–"}</td>
+          <td>${p.balance != null ? p.balance : "–"}</td>
+        `;
+        rowsTbody.appendChild(tr);
+      });
+    }
+
+  } catch(e) {
+    console.error('Poll error:', e);
+  }
 }
 
 setInterval(poll, 1000);
