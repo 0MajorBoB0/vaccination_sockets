@@ -377,12 +377,14 @@ def admin_dashboard():
 
     # Separate sessions by status
     sessions_active = [s for s in sessions if not s["archived"] and s["status"] == "lobby"]
-    sessions_done = [s for s in sessions if not s["archived"] and s["status"] != "lobby"]
+    sessions_playing = [s for s in sessions if not s["archived"] and s["status"] == "playing"]
+    sessions_done = [s for s in sessions if not s["archived"] and s["status"] == "done"]
     sessions_arch = [s for s in sessions if s["archived"]]
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     return render_template("admin_dashboard.html",
                          sessions_active=sessions_active,
+                         sessions_playing=sessions_playing,
                          sessions_done=sessions_done,
                          sessions_arch=sessions_arch,
                          now=now)
