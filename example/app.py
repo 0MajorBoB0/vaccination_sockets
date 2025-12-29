@@ -7,9 +7,18 @@ from flask_socketio import SocketIO, emit, join_room, leave_room, \
 # STEP 3: DB imports
 import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import QueuePool
+from contextlib import contextmanager
 
 # STEP 4: Admin imports
 from functools import wraps
+
+# STEP 5: Utility imports
+import uuid
+import random
+import string
+import datetime
+from datetime import timezone
 
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
@@ -40,6 +49,108 @@ def admin_required(f):
     return decorated_function
 
 
+# STEP 5: Database configuration with connection pooling
+DB_HOST = os.environ.get("DB_HOST", "GameTheoryUDE26.mysql.eu.pythonanywhere-services.com")
+DB_USER = os.environ.get("DB_USER", "GameTheoryUDE26")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "UDE2020EM")
+DB_NAME = os.environ.get("DB_NAME", "GameTheoryUDE26$vaccination_game")
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+
+# Create engine with connection pooling (prevents "too many connections" error)
+db_engine = create_engine(
+    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
+    poolclass=QueuePool,
+    pool_size=10,           # Max 10 persistent connections
+    max_overflow=20,        # Up to 20 additional connections in peaks
+    pool_pre_ping=True,     # Check connection health before using
+    pool_recycle=3600,      # Recycle connections after 1 hour
+    echo=False,             # Don't log SQL queries
+)
+
+@contextmanager
+def get_db():
+    """Context manager for database connections."""
+    conn = db_engine.connect()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+# STEP 5: Utility functions
+def create_code(n=6):
+    """Generate unique participant code (no confusing chars)."""
+    chars = (string.ascii_uppercase + string.digits).replace("O","").replace("0","").replace("I","").replace("1","")
+    return "".join(random.choice(chars) for _ in range(n))
+
+def utc_now():
+    """Get current UTC time (timezone-aware)."""
+    return datetime.datetime.now(timezone.utc).replace(microsecond=0)
+
+def iso_utc(dt):
+    """Convert datetime to ISO string with Z suffix."""
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# STEP 5: Initialize database schema
+def init_db():
+    """Initialize database schema with all required tables."""
+    print("🔧 Initializing database schema...")
+
+    with get_db() as conn:
+        # Sessions table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id VARCHAR(36) PRIMARY KEY,
+                name VARCHAR(255),
+                group_size INT,
+                rounds INT,
+                starting_balance DECIMAL(10,2) DEFAULT 500,
+                created_at VARCHAR(30),
+                archived TINYINT DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'lobby'
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """))
+
+        # Participants table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS participants (
+                id VARCHAR(36) PRIMARY KEY,
+                session_id VARCHAR(36),
+                code VARCHAR(10) UNIQUE,
+                joined TINYINT DEFAULT 0,
+                join_number INT,
+                current_round INT DEFAULT 1,
+                balance DECIMAL(10,2) DEFAULT 0,
+                completed TINYINT DEFAULT 0,
+                created_at VARCHAR(30),
+                ready_for_next TINYINT DEFAULT 0,
+                INDEX idx_session (session_id),
+                INDEX idx_session_code (session_id, code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """))
+
+        # Decisions table
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS decisions (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                session_id VARCHAR(36),
+                participant_id VARCHAR(36),
+                round_number INT,
+                choice VARCHAR(1),
+                cost DECIMAL(10,2),
+                created_at VARCHAR(30),
+                INDEX idx_session_round (session_id, round_number),
+                INDEX idx_participant_round (participant_id, round_number),
+                UNIQUE KEY ux_participant_round (participant_id, round_number)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """))
+
+        conn.commit()
+
+    print("✅ Database schema initialized successfully!")
+
+
 def background_thread():
     """Example of how to send server generated events to clients."""
     count = 0
@@ -65,17 +176,23 @@ def healthz():
 @app.route('/test_db')
 def test_db():
     try:
-        DB_HOST = os.environ.get("DB_HOST", "GameTheoryUDE26.mysql.eu.pythonanywhere-services.com")
-        DB_USER = os.environ.get("DB_USER", "GameTheoryUDE26")
-        DB_PASSWORD = os.environ.get("DB_PASSWORD", "UDE2020EM")
-        DB_NAME = os.environ.get("DB_NAME", "GameTheoryUDE26$vaccination_game")
-
-        engine = create_engine(f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:3306/{DB_NAME}")
-        with engine.connect() as conn:
+        with get_db() as conn:
             result = conn.execute(text("SELECT 1"))
             return "OK - Step 3: DB connection works!", 200
     except Exception as e:
         return f"ERROR - Step 3: {str(e)}", 500
+
+
+# STEP 5: Initialize database schema
+@app.route('/init_db')
+@admin_required
+def init_db_route():
+    """Initialize database schema (admin only)."""
+    try:
+        init_db()
+        return "OK - Step 5: Database schema initialized!", 200
+    except Exception as e:
+        return f"ERROR - Step 5: {str(e)}", 500
 
 
 # STEP 4: Admin routes
