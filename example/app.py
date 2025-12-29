@@ -1,12 +1,15 @@
 from threading import Lock
 from flask import Flask, render_template, session, request, \
-    copy_current_request_context
+    copy_current_request_context, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room, \
     close_room, rooms, disconnect
 
 # STEP 3: DB imports
 import os
 from sqlalchemy import create_engine, text
+
+# STEP 4: Admin imports
+from functools import wraps
 
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
@@ -18,6 +21,23 @@ app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode, logger=True, engineio_logger=True, cors_allowed_origins="*")
 thread = None
 thread_lock = Lock()
+
+# STEP 4: Admin configuration
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+# STEP 4: Admin helper functions
+def require_admin():
+    """Check if current user is logged in as admin."""
+    return session.get("admin_ok") is True
+
+def admin_required(f):
+    """Decorator to require admin login."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not require_admin():
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def background_thread():
@@ -56,6 +76,32 @@ def test_db():
             return "OK - Step 3: DB connection works!", 200
     except Exception as e:
         return f"ERROR - Step 3: {str(e)}", 500
+
+
+# STEP 4: Admin routes
+@app.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+    """Admin login page."""
+    if request.method == "POST":
+        password = request.form.get("password", "").strip()
+        if password == ADMIN_PASSWORD:
+            session["admin_ok"] = True
+            return redirect(url_for("admin_dashboard"))
+        else:
+            return render_template("admin_login.html", error="Falsches Passwort!")
+    return render_template("admin_login.html", error=None)
+
+@app.route("/admin_logout")
+def admin_logout():
+    """Admin logout."""
+    session.pop("admin_ok", None)
+    return redirect(url_for("admin_login"))
+
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    """Admin dashboard - shows all sessions."""
+    return render_template("admin_dashboard.html")
 
 
 @socketio.event
@@ -142,6 +188,28 @@ def connect():
         if thread is None:
             thread = socketio.start_background_task(background_thread)
     emit('my_response', {'data': 'Connected', 'count': 0})
+
+
+# STEP 4: Admin Socket.IO events
+@socketio.on('admin_connect')
+def handle_admin_connect():
+    """Admin connects to dashboard - join admin room for broadcasts."""
+    if not require_admin():
+        return {'error': 'Unauthorized'}
+
+    join_room('admin_room')
+    emit('admin_status', {'message': 'Connected to admin live updates'})
+    print(f"Admin connected via Socket.IO: {request.sid}")
+
+@socketio.on('admin_get_sessions')
+def handle_admin_get_sessions():
+    """Get all sessions - for now return empty array."""
+    if not require_admin():
+        return {'error': 'Unauthorized'}
+
+    # For now, return empty sessions array
+    # Later we'll query from database
+    emit('admin_sessions_update', {'sessions': []})
 
 
 @socketio.on('disconnect')
