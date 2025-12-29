@@ -92,6 +92,34 @@ def iso_utc(dt):
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def get_participant_state():
+    """Get current participant and session state from database."""
+    participant_id = session.get("participant_id")
+    session_id = session.get("session_id")
+
+    if not participant_id or not session_id:
+        return None, None
+
+    with get_db() as conn:
+        p_result = conn.execute(text("""
+            SELECT p.id, p.session_id, p.code, p.joined, p.join_number,
+                   p.current_round, p.ptype, p.balance, p.ready_for_next,
+                   s.status, s.rounds, s.group_size
+            FROM participants p
+            JOIN sessions s ON p.session_id = s.id
+            WHERE p.id = :pid AND s.id = :sid
+        """), {"pid": participant_id, "sid": session_id})
+
+        result = p_result.fetchone()
+        if not result:
+            return None, None
+
+        participant = dict(result._mapping)
+        return participant, session_id
+
+    return None, None
+
+
 # STEP 8: Game mechanics - TYPE_COST configuration
 TYPE_COST = {
     1: {"B": [4, 3, 2, 1, 0],  "A": 4},
@@ -470,14 +498,21 @@ def join():
 @app.route("/lobby")
 def lobby():
     """Lobby - wait for all participants to join."""
-    participant_id = session.get("participant_id")
-    session_id = session.get("session_id")
+    participant, session_id = get_participant_state()
 
-    if not participant_id or not session_id:
+    if not participant:
         return redirect(url_for("join"))
 
+    if not participant["joined"]:
+        return redirect(url_for("join"))
+
+    if participant["status"] == "playing":
+        return redirect(url_for("round_view"))
+
+    if participant["status"] == "done":
+        return redirect(url_for("done"))
+
     with get_db() as conn:
-        # Get session info
         s_result = conn.execute(text("""
             SELECT id, name, group_size, rounds, starting_balance, status
             FROM sessions
@@ -491,21 +526,6 @@ def lobby():
 
         session_data = dict(session_data._mapping)
 
-        # Get participant info
-        p_result = conn.execute(text("""
-            SELECT id, code, joined, join_number
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
-
-        participant = p_result.fetchone()
-
-        if not participant:
-            return redirect(url_for("join"))
-
-        participant = dict(participant._mapping)
-
-        # Count joined participants
         count_result = conn.execute(text("""
             SELECT COUNT(*) as joined_count
             FROM participants
@@ -513,6 +533,23 @@ def lobby():
         """), {"sid": session_id})
 
         joined_count = count_result.fetchone()[0]
+
+        if joined_count >= session_data["group_size"] and session_data["status"] == "lobby":
+            conn.execute(text("""
+                UPDATE sessions
+                SET status = 'playing'
+                WHERE id = :sid
+            """), {"sid": session_id})
+
+            conn.execute(text("""
+                UPDATE participants
+                SET current_round = 1
+                WHERE session_id = :sid
+            """), {"sid": session_id})
+
+            conn.commit()
+
+            return redirect(url_for("round_view"))
 
     return render_template("lobby.html",
                          session=session_data,
@@ -523,50 +560,48 @@ def lobby():
 @app.route("/round")
 def round_view():
     """Display current round with decision options."""
-    participant_id = session.get("participant_id")
-    session_id = session.get("session_id")
+    participant, session_id = get_participant_state()
 
-    if not participant_id or not session_id:
+    if not participant:
         return redirect(url_for("join"))
 
+    if not participant["joined"]:
+        return redirect(url_for("join"))
+
+    if participant["status"] == "lobby":
+        return redirect(url_for("lobby"))
+
+    if participant["status"] == "done":
+        return redirect(url_for("done"))
+
+    r = participant["current_round"] or 1
+
+    if r > participant["rounds"]:
+        return redirect(url_for("done"))
+
     with get_db() as conn:
-        # Get session info
-        s_result = conn.execute(text("""
-            SELECT id, name, group_size, rounds, starting_balance, status
-            FROM sessions
-            WHERE id = :sid
-        """), {"sid": session_id})
+        already_decided = conn.execute(text("""
+            SELECT 1 FROM decisions
+            WHERE participant_id = :pid AND round_number = :r
+        """), {"pid": participant["id"], "r": r}).fetchone()
 
-        session_data = s_result.fetchone()
+        if already_decided:
+            return redirect(url_for("wait_view"))
 
-        if not session_data:
-            return redirect(url_for("join"))
-
-        session_data = dict(session_data._mapping)
-
-        # Get participant info including current_round and ptype
-        p_result = conn.execute(text("""
-            SELECT id, code, joined, join_number, current_round, ptype
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
-
-        participant = p_result.fetchone()
-
-        if not participant:
-            return redirect(url_for("join"))
-
-        participant = dict(participant._mapping)
-
-        # Calculate costs based on player type
-        r = participant["current_round"] or 1
         ptype = participant["ptype"] or 1
-        N = session_data["group_size"]
+        N = participant["group_size"]
 
         a_cost_display = a_cost_for(ptype)
         others_max = max(1, N - 1)
         b_row_costs = [int(b_cost_adapt(ptype, k, N)) for k in range(1, others_max + 1)]
         b_list = [{"others": k, "cost": b_row_costs[k-1]} for k in range(1, others_max + 1)]
+
+    session_data = {
+        "id": session_id,
+        "group_size": participant["group_size"],
+        "rounds": participant["rounds"],
+        "status": participant["status"]
+    }
 
     return render_template(
         "round.html",
@@ -576,8 +611,8 @@ def round_view():
         a_cost_display=a_cost_display,
         b_list=b_list,
         others_max=others_max,
-        base_payout=int(session_data["starting_balance"] or 500),
-        balance_current=int(session_data["starting_balance"] or 500),
+        base_payout=500,
+        balance_current=500,
         participant=participant
     )
 
@@ -647,44 +682,34 @@ def choose():
 @app.route("/wait")
 def wait_view():
     """Wait for all participants to decide."""
-    participant_id = session.get("participant_id")
-    session_id = session.get("session_id")
+    participant, session_id = get_participant_state()
 
-    if not participant_id or not session_id:
+    if not participant:
         return redirect(url_for("join"))
 
+    if not participant["joined"]:
+        return redirect(url_for("join"))
+
+    if participant["status"] == "lobby":
+        return redirect(url_for("lobby"))
+
+    if participant["status"] == "done":
+        return redirect(url_for("done"))
+
+    r = participant["current_round"] or 1
+
+    if r > participant["rounds"]:
+        return redirect(url_for("done"))
+
     with get_db() as conn:
-        # Get session info
-        s_result = conn.execute(text("""
-            SELECT id, name, group_size, rounds, status
-            FROM sessions
-            WHERE id = :sid
-        """), {"sid": session_id})
+        already_decided = conn.execute(text("""
+            SELECT 1 FROM decisions
+            WHERE participant_id = :pid AND round_number = :r
+        """), {"pid": participant["id"], "r": r}).fetchone()
 
-        session_data = s_result.fetchone()
+        if not already_decided:
+            return redirect(url_for("round_view"))
 
-        if not session_data:
-            return redirect(url_for("join"))
-
-        session_data = dict(session_data._mapping)
-
-        # Get participant info
-        p_result = conn.execute(text("""
-            SELECT id, code, joined, join_number, current_round
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
-
-        participant = p_result.fetchone()
-
-        if not participant:
-            return redirect(url_for("join"))
-
-        participant = dict(participant._mapping)
-
-        r = participant["current_round"] or 1
-
-        # Count decisions for this round
         decided_result = conn.execute(text("""
             SELECT COUNT(*) as c
             FROM decisions
@@ -692,6 +717,16 @@ def wait_view():
         """), {"sid": session_id, "r": r})
 
         decided = decided_result.fetchone()[0]
+
+        if decided >= participant["group_size"]:
+            return redirect(url_for("reveal"))
+
+    session_data = {
+        "id": session_id,
+        "group_size": participant["group_size"],
+        "rounds": participant["rounds"],
+        "status": participant["status"]
+    }
 
     return render_template("wait.html",
                          session=session_data,
@@ -789,43 +824,47 @@ def finalize_round(session_id, round_number):
 @app.route("/reveal")
 def reveal():
     """Show round results."""
-    participant_id = session.get("participant_id")
-    session_id = session.get("session_id")
+    participant, session_id = get_participant_state()
 
-    if not participant_id or not session_id:
+    if not participant:
         return redirect(url_for("join"))
 
+    if not participant["joined"]:
+        return redirect(url_for("join"))
+
+    if participant["status"] == "lobby":
+        return redirect(url_for("lobby"))
+
+    if participant["status"] == "done":
+        return redirect(url_for("done"))
+
+    r = participant["current_round"] or 1
+
+    if r > participant["rounds"]:
+        return redirect(url_for("done"))
+
     with get_db() as conn:
-        s_result = conn.execute(text("""
-            SELECT id, name, group_size, rounds, status
-            FROM sessions
-            WHERE id = :sid
-        """), {"sid": session_id})
+        decided_result = conn.execute(text("""
+            SELECT COUNT(*) as c
+            FROM decisions
+            WHERE session_id = :sid AND round_number = :r
+        """), {"sid": session_id, "r": r})
 
-        session_data = s_result.fetchone()
+        decided = decided_result.fetchone()[0]
 
-        if not session_data:
-            return redirect(url_for("join"))
-
-        session_data = dict(session_data._mapping)
-
-        p_result = conn.execute(text("""
-            SELECT id, code, joined, join_number, current_round
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
-
-        participant = p_result.fetchone()
-
-        if not participant:
-            return redirect(url_for("join"))
-
-        participant = dict(participant._mapping)
-
-        r = participant["current_round"] or 1
-        is_last_round = (r >= session_data["rounds"])
+        if decided < participant["group_size"]:
+            return redirect(url_for("wait_view"))
 
         finalize_round(session_id, r)
+
+        is_last_round = (r >= participant["rounds"])
+
+    session_data = {
+        "id": session_id,
+        "group_size": participant["group_size"],
+        "rounds": participant["rounds"],
+        "status": participant["status"]
+    }
 
     return render_template("reveal.html",
                          session=session_data,
@@ -884,19 +923,66 @@ def confirm_ready():
         group_size = group_size_result.fetchone()[0]
 
         if ready_count >= group_size:
-            conn.execute(text("""
-                UPDATE participants
-                SET current_round = current_round + 1, ready_for_next = 0
-                WHERE session_id = :sid
+            s_result = conn.execute(text("""
+                SELECT rounds
+                FROM sessions
+                WHERE id = :sid
             """), {"sid": session_id})
 
-            conn.commit()
+            total_rounds = s_result.fetchone()[0]
 
-            socketio.emit('all_ready', {
-                'next_round': current_round + 1
-            }, room=f"session_{session_id}")
+            if current_round >= total_rounds:
+                conn.execute(text("""
+                    UPDATE sessions
+                    SET status = 'done'
+                    WHERE id = :sid
+                """), {"sid": session_id})
+
+                conn.execute(text("""
+                    UPDATE participants
+                    SET ready_for_next = 0
+                    WHERE session_id = :sid
+                """), {"sid": session_id})
+
+                conn.commit()
+
+                socketio.emit('game_finished', {}, room=f"session_{session_id}")
+            else:
+                conn.execute(text("""
+                    UPDATE participants
+                    SET current_round = current_round + 1, ready_for_next = 0
+                    WHERE session_id = :sid
+                """), {"sid": session_id})
+
+                conn.commit()
+
+                socketio.emit('all_ready', {
+                    'next_round': current_round + 1
+                }, room=f"session_{session_id}")
 
     return ({"ok": True}, 200)
+
+
+@app.route("/done")
+def done():
+    """Game finished - show final results."""
+    participant, session_id = get_participant_state()
+
+    if not participant:
+        return redirect(url_for("join"))
+
+    if not participant["joined"]:
+        return redirect(url_for("join"))
+
+    if participant["status"] == "lobby":
+        return redirect(url_for("lobby"))
+
+    if participant["status"] == "playing":
+        return redirect(url_for("round_view"))
+
+    return render_template("done.html",
+                         participant=participant,
+                         session_id=session_id)
 
 
 @socketio.event

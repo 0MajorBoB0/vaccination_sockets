@@ -122,6 +122,11 @@ socket.on('all_ready', (data) => {
   window.location.href = isLastRound ? "/done" : "/round";
 });
 
+socket.on('game_finished', () => {
+  console.log('Spiel beendet');
+  window.location.href = "/done";
+});
+
 async function confirmReady(){
   btnReady.disabled = true;
   const res = await fetch('/confirm_ready', {method:'POST'});
