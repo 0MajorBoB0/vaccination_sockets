@@ -36,12 +36,13 @@
     {% if is_last_round %}Bestätigen & Beenden{% else %}Bereit für nächste Runde{% endif %}
   </button>
   <p id="already-ready" style="display:none; color:#4ade80; margin-top:8px;">
-    ✓ Sie haben bestätigt. Warten auf andere Spieler…
+    Sie haben bestätigt. Warten auf andere Spieler...
   </p>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
 const sid = "{{ session['id'] }}";
 const pid = "{{ participant['id'] }}";
@@ -54,19 +55,24 @@ const readyCountEl = document.getElementById('ready-count');
 const groupSizeEl = document.getElementById('group-size');
 const readyPlayersEl = document.getElementById('ready-players');
 
+const socket = io();
+
 function fmt(x){ return Number(x||0).toFixed(0); }
 
-// Load round results once
-async function loadResults(){
-  const res = await fetch(`/round_status?session_id=${sid}&round=${r}&participant_id=${pid}`);
-  if(!res.ok) return;
-  const d = await res.json();
-  if (d.reset) {
-    window.location.href = "/join";
-    return;
-  }
+socket.on('connect', () => {
+  console.log('Socket.IO verbunden:', socket.id);
+  socket.emit('join_reveal', {});
+});
+
+socket.on('disconnect', () => {
+  console.log('Socket.IO getrennt');
+});
+
+socket.on('reveal_status', (data) => {
+  console.log('Reveal Status:', data);
+
   tbody.innerHTML = '';
-  (d.players||[]).forEach(p=>{
+  (data.players||[]).forEach(p=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>Spieler ${p.player_no || "?"}</td>
@@ -75,9 +81,47 @@ async function loadResults(){
       <td class="mono">${fmt(p.payout)}</td>`;
     tbody.appendChild(tr);
   });
-}
 
-// Confirm ready for next round
+  readyCountEl.textContent = data.ready_count;
+  groupSizeEl.textContent = data.group_size;
+
+  readyPlayersEl.innerHTML = '';
+  (data.ready_players||[]).forEach(p=>{
+    const span = document.createElement('span');
+    span.className = 'player-ready-badge';
+    span.style.cssText = `
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: ${p.ready ? '#166534' : '#1e2b43'};
+      color: ${p.ready ? '#4ade80' : '#aab7d4'};
+      border: 1px solid ${p.ready ? '#22c55e' : '#2d3f5f'};
+    `;
+    span.textContent = `Spieler ${p.player_no}: ${p.ready ? 'Bereit' : 'Wartet'}`;
+    readyPlayersEl.appendChild(span);
+  });
+
+  if(data.me_ready){
+    btnReady.style.display = 'none';
+    alreadyReady.style.display = 'block';
+  }
+
+  if(data.all_ready){
+    console.log('Alle Spieler bereit');
+    window.location.href = isLastRound ? "/done" : "/round";
+  }
+});
+
+socket.on('player_ready', () => {
+  console.log('Spieler hat bereit markiert');
+  socket.emit('join_reveal', {});
+});
+
+socket.on('all_ready', (data) => {
+  console.log('Alle bereit, naechste Runde:', data.next_round);
+  window.location.href = isLastRound ? "/done" : "/round";
+});
+
 async function confirmReady(){
   btnReady.disabled = true;
   const res = await fetch('/confirm_ready', {method:'POST'});
@@ -88,56 +132,5 @@ async function confirmReady(){
     btnReady.disabled = false;
   }
 }
-
-// Poll ready status
-async function pollReady(){
-  try {
-    const res = await fetch(`/ready_status?session_id=${sid}&participant_id=${pid}`);
-    if(!res.ok) return;
-    const d = await res.json();
-
-    if (d.reset) {
-      window.location.href = "/join";
-      return;
-    }
-
-    readyCountEl.textContent = d.ready_count;
-    groupSizeEl.textContent = d.group_size;
-
-    readyPlayersEl.innerHTML = '';
-    (d.players||[]).forEach(p=>{
-      const span = document.createElement('span');
-      span.className = 'player-ready-badge';
-      span.style.cssText = `
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        background: ${p.ready ? '#166534' : '#1e2b43'};
-        color: ${p.ready ? '#4ade80' : '#aab7d4'};
-        border: 1px solid ${p.ready ? '#22c55e' : '#2d3f5f'};
-      `;
-      span.textContent = `Spieler ${p.player_no}: ${p.ready ? '✓' : '…'}`;
-      readyPlayersEl.appendChild(span);
-    });
-
-    // Update button state based on own status
-    if(d.me_ready){
-      btnReady.style.display = 'none';
-      alreadyReady.style.display = 'block';
-    }
-
-    // If all ready, redirect to next round or done
-    if(d.all_ready){
-      window.location.href = isLastRound ? "/done" : "/round";
-    }
-  } catch(e) {}
-}
-
-// Initial load
-loadResults();
-pollReady();
-
-// Poll every 2 seconds
-setInterval(pollReady, 2000);
 </script>
 {% endblock %}

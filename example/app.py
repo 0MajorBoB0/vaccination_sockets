@@ -700,6 +700,205 @@ def wait_view():
                          participant=participant)
 
 
+def finalize_round(session_id, round_number):
+    """Calculate costs and payouts for completed round."""
+    with get_db() as conn:
+        s_result = conn.execute(text("""
+            SELECT group_size, starting_balance
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        session_data = s_result.fetchone()
+        if not session_data:
+            return
+
+        session_dict = dict(session_data._mapping)
+
+        decided_result = conn.execute(text("""
+            SELECT COUNT(*) as c
+            FROM decisions
+            WHERE session_id = :sid AND round_number = :r
+        """), {"sid": session_id, "r": round_number})
+
+        decided_count = decided_result.fetchone()[0]
+
+        if decided_count < session_dict["group_size"]:
+            return
+
+        missing_result = conn.execute(text("""
+            SELECT COUNT(*) as c
+            FROM decisions
+            WHERE session_id = :sid AND round_number = :r AND total_cost IS NULL
+        """), {"sid": session_id, "r": round_number})
+
+        missing_count = missing_result.fetchone()[0]
+
+        if missing_count <= 0:
+            return
+
+        rows_result = conn.execute(text("""
+            SELECT d.id, d.participant_id, d.choice, p.ptype, p.join_number
+            FROM decisions d
+            JOIN participants p ON p.id = d.participant_id
+            WHERE d.session_id = :sid AND d.round_number = :r
+            ORDER BY p.join_number
+        """), {"sid": session_id, "r": round_number})
+
+        rows = rows_result.fetchall()
+
+        total_A = sum(1 for row in rows if row[2] == "A")
+        N = session_dict["group_size"]
+        M = float(session_dict["starting_balance"] or 500)
+
+        for row in rows:
+            did = row[0]
+            pid = row[1]
+            choice = row[2]
+            ptype = row[3] or 1
+
+            if choice == "A":
+                cost = a_cost_for(ptype)
+                others_A = max(0, total_A - 1)
+            else:
+                others_A = total_A
+                cost = b_cost_adapt(ptype, others_A, N)
+
+            payout = max(M - float(cost), 0)
+
+            conn.execute(text("""
+                UPDATE decisions
+                SET total_cost = :cost, payout = :payout, others_A = :others_A
+                WHERE id = :did AND total_cost IS NULL
+            """), {
+                "cost": cost,
+                "payout": payout,
+                "others_A": others_A,
+                "did": did
+            })
+
+            conn.execute(text("""
+                UPDATE participants
+                SET balance = :payout
+                WHERE id = :pid
+            """), {"payout": payout, "pid": pid})
+
+        conn.commit()
+
+
+@app.route("/reveal")
+def reveal():
+    """Show round results."""
+    participant_id = session.get("participant_id")
+    session_id = session.get("session_id")
+
+    if not participant_id or not session_id:
+        return redirect(url_for("join"))
+
+    with get_db() as conn:
+        s_result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, status
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return redirect(url_for("join"))
+
+        session_data = dict(session_data._mapping)
+
+        p_result = conn.execute(text("""
+            SELECT id, code, joined, join_number, current_round
+            FROM participants
+            WHERE id = :pid
+        """), {"pid": participant_id})
+
+        participant = p_result.fetchone()
+
+        if not participant:
+            return redirect(url_for("join"))
+
+        participant = dict(participant._mapping)
+
+        r = participant["current_round"] or 1
+        is_last_round = (r >= session_data["rounds"])
+
+        finalize_round(session_id, r)
+
+    return render_template("reveal.html",
+                         session=session_data,
+                         round_number=r,
+                         participant=participant,
+                         is_last_round=is_last_round)
+
+
+@app.route("/confirm_ready", methods=["POST"])
+def confirm_ready():
+    """Player confirms ready for next round."""
+    participant_id = session.get("participant_id")
+    session_id = session.get("session_id")
+
+    if not participant_id or not session_id:
+        return ("No participant", 400)
+
+    with get_db() as conn:
+        p_result = conn.execute(text("""
+            SELECT current_round
+            FROM participants
+            WHERE id = :pid
+        """), {"pid": participant_id})
+
+        participant = p_result.fetchone()
+
+        if not participant:
+            return ("Participant not found", 404)
+
+        current_round = participant[0] or 1
+
+        conn.execute(text("""
+            UPDATE participants
+            SET ready_for_next = 1
+            WHERE id = :pid
+        """), {"pid": participant_id})
+
+        conn.commit()
+
+        socketio.emit('player_ready', {}, room=f"session_{session_id}")
+
+        ready_count_result = conn.execute(text("""
+            SELECT COUNT(*) as c
+            FROM participants
+            WHERE session_id = :sid AND ready_for_next = 1
+        """), {"sid": session_id})
+
+        ready_count = ready_count_result.fetchone()[0]
+
+        group_size_result = conn.execute(text("""
+            SELECT group_size
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        group_size = group_size_result.fetchone()[0]
+
+        if ready_count >= group_size:
+            conn.execute(text("""
+                UPDATE participants
+                SET current_round = current_round + 1, ready_for_next = 0
+                WHERE session_id = :sid
+            """), {"sid": session_id})
+
+            conn.commit()
+
+            socketio.emit('all_ready', {
+                'next_round': current_round + 1
+            }, room=f"session_{session_id}")
+
+    return ({"ok": True}, 200)
+
+
 @socketio.event
 def my_event(message):
     session['receive_count'] = session.get('receive_count', 0) + 1
@@ -934,6 +1133,100 @@ def handle_join_round(data):
             })
 
     print(f"Participant {participant_id} joined round room: {room}")
+
+
+@socketio.on('join_reveal')
+def handle_join_reveal(data):
+    """Participant joins reveal room for ready status updates."""
+    session_id = session.get("session_id")
+    participant_id = session.get("participant_id")
+
+    if not session_id or not participant_id:
+        return {'error': 'Not authenticated'}
+
+    with get_db() as conn:
+        p_result = conn.execute(text("""
+            SELECT current_round
+            FROM participants
+            WHERE id = :pid
+        """), {"pid": participant_id})
+
+        participant = p_result.fetchone()
+
+        if not participant:
+            return {'error': 'Participant not found'}
+
+        r = participant[0] or 1
+
+        room = f"session_{session_id}"
+        join_room(room)
+
+        results_result = conn.execute(text("""
+            SELECT p.join_number, d.choice, d.total_cost, d.payout
+            FROM decisions d
+            JOIN participants p ON p.id = d.participant_id
+            WHERE d.session_id = :sid AND d.round_number = :r
+            ORDER BY p.join_number
+        """), {"sid": session_id, "r": r})
+
+        players = []
+        for row in results_result.fetchall():
+            players.append({
+                "player_no": row[0],
+                "choice": row[1],
+                "cost": row[2],
+                "payout": row[3]
+            })
+
+        ready_result = conn.execute(text("""
+            SELECT p.join_number, p.ready_for_next, p.id
+            FROM participants p
+            WHERE p.session_id = :sid
+            ORDER BY p.join_number
+        """), {"sid": session_id})
+
+        ready_players = []
+        me_ready = False
+        for row in ready_result.fetchall():
+            is_ready = bool(row[1])
+            ready_players.append({
+                "player_no": row[0],
+                "ready": is_ready
+            })
+            if row[2] == participant_id:
+                me_ready = is_ready
+
+        ready_count = sum(1 for p in ready_players if p["ready"])
+
+        s_result = conn.execute(text("""
+            SELECT group_size
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        group_size = s_result.fetchone()[0]
+
+        emit('reveal_status', {
+            'players': players,
+            'ready_count': ready_count,
+            'group_size': group_size,
+            'all_ready': ready_count >= group_size,
+            'me_ready': me_ready,
+            'ready_players': ready_players
+        })
+
+    print(f"Participant {participant_id} joined reveal room: {room}")
+
+
+@socketio.on('ready_update')
+def handle_ready_update(data):
+    """Broadcast when a player marks themselves as ready."""
+    session_id = session.get("session_id")
+
+    if not session_id:
+        return {'error': 'Not authenticated'}
+
+    socketio.emit('player_ready', {}, room=f"session_{session_id}")
 
 
 @socketio.on('disconnect')
