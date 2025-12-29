@@ -298,6 +298,46 @@ def admin_dashboard():
 
     return render_template("admin_dashboard.html", sessions=sessions)
 
+# ==================== SOCKET.IO EVENTS - ADMIN ====================
+
+@socketio.on('admin_connect')
+def handle_admin_connect():
+    """Admin connects to dashboard - join admin room for broadcasts."""
+    if not require_admin():
+        return {'error': 'Unauthorized'}
+
+    join_room('admin_room')
+    emit('admin_status', {'message': 'Connected to admin live updates'})
+    print(f"🔌 Admin connected via Socket.IO: {request.sid}")
+
+@socketio.on('admin_get_sessions')
+def handle_admin_get_sessions():
+    """Get all sessions with live stats."""
+    if not require_admin():
+        return {'error': 'Unauthorized'}
+
+    with get_db() as conn:
+        # Get all sessions with participant counts
+        result = conn.execute(text("""
+            SELECT
+                s.id, s.name, s.group_size, s.rounds,
+                s.starting_balance, s.created_at, s.archived,
+                COUNT(DISTINCT p.id) as total_participants,
+                COUNT(DISTINCT CASE WHEN p.joined = 1 THEN p.id END) as joined_count
+            FROM sessions s
+            LEFT JOIN participants p ON p.session_id = s.id
+            GROUP BY s.id
+            ORDER BY s.created_at DESC
+        """))
+        sessions = [dict(row._mapping) for row in result]
+
+    emit('admin_sessions_update', {'sessions': sessions})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle Socket.IO disconnect."""
+    print(f"🔌 Client disconnected: {request.sid}")
+
 # ==================== MAIN ====================
 
 if __name__ == "__main__":
