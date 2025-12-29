@@ -214,11 +214,86 @@ def admin_logout():
     session.pop("admin_ok", None)
     return redirect(url_for("admin_login"))
 
-@app.route("/admin")
+@app.route("/admin", methods=["GET", "POST"])
 @admin_required
 def admin_dashboard():
     """Admin dashboard - shows all sessions."""
-    return render_template("admin_dashboard.html")
+    with get_db() as conn:
+        # POST: Create new session
+        if request.method == "POST":
+            name = request.form.get("name", f"Session {datetime.datetime.now():%Y-%m-%d %H:%M}")
+            group_size = int(request.form.get("group_size", "6"))
+            rounds = int(request.form.get("rounds", "20"))
+            starting_balance = float(request.form.get("base_payout", "500"))
+
+            # Create session
+            session_id = str(uuid.uuid4())
+            conn.execute(text("""
+                INSERT INTO sessions (id, name, group_size, rounds, starting_balance, created_at, archived, status)
+                VALUES (:id, :name, :group_size, :rounds, :starting_balance, :created_at, 0, 'lobby')
+            """), {
+                "id": session_id,
+                "name": name,
+                "group_size": group_size,
+                "rounds": rounds,
+                "starting_balance": starting_balance,
+                "created_at": iso_utc(utc_now())
+            })
+
+            # Create participants with unique codes
+            for i in range(group_size):
+                participant_id = str(uuid.uuid4())
+
+                # Generate unique code
+                while True:
+                    code = create_code(6)
+                    existing = conn.execute(text("SELECT 1 FROM participants WHERE code = :code"), {"code": code}).fetchone()
+                    if not existing:
+                        break
+
+                conn.execute(text("""
+                    INSERT INTO participants
+                    (id, session_id, code, joined, join_number, current_round, balance, completed, created_at, ready_for_next)
+                    VALUES (:id, :session_id, :code, 0, NULL, 1, :balance, 0, :created_at, 0)
+                """), {
+                    "id": participant_id,
+                    "session_id": session_id,
+                    "code": code,
+                    "balance": starting_balance,
+                    "created_at": iso_utc(utc_now())
+                })
+
+            conn.commit()
+
+            # Notify all admin clients via Socket.IO
+            socketio.emit('session_created', {'session_id': session_id}, room='admin_room')
+
+            return redirect(url_for("admin_dashboard"))
+
+        # GET: Show all sessions
+        result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, created_at, archived, status
+            FROM sessions
+            ORDER BY created_at DESC
+        """))
+        sessions = [dict(row._mapping) for row in result]
+
+        # Get participants for each session
+        for s in sessions:
+            p_result = conn.execute(text("SELECT code, joined FROM participants WHERE session_id = :sid"), {"sid": s["id"]})
+            s["participants"] = [dict(row._mapping) for row in p_result]
+
+    # Separate sessions by status
+    sessions_active = [s for s in sessions if not s["archived"] and s["status"] == "lobby"]
+    sessions_done = [s for s in sessions if not s["archived"] and s["status"] != "lobby"]
+    sessions_arch = [s for s in sessions if s["archived"]]
+
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    return render_template("admin_dashboard.html",
+                         sessions_active=sessions_active,
+                         sessions_done=sessions_done,
+                         sessions_arch=sessions_arch,
+                         now=now)
 
 
 @socketio.event
@@ -320,13 +395,25 @@ def handle_admin_connect():
 
 @socketio.on('admin_get_sessions')
 def handle_admin_get_sessions():
-    """Get all sessions - for now return empty array."""
+    """Get all sessions from database."""
     if not require_admin():
         return {'error': 'Unauthorized'}
 
-    # For now, return empty sessions array
-    # Later we'll query from database
-    emit('admin_sessions_update', {'sessions': []})
+    with get_db() as conn:
+        result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, created_at, archived, status
+            FROM sessions
+            ORDER BY created_at DESC
+        """))
+        sessions = []
+        for row in result:
+            s = dict(row._mapping)
+            # Get participants for this session
+            p_result = conn.execute(text("SELECT code, joined FROM participants WHERE session_id = :sid"), {"sid": s["id"]})
+            s["participants"] = [dict(p._mapping) for p in p_result]
+            sessions.append(s)
+
+    emit('admin_sessions_update', {'sessions': sessions})
 
 
 @socketio.on('disconnect')
