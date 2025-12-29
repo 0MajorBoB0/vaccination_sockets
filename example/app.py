@@ -451,20 +451,46 @@ def join():
 
             participant = dict(participant._mapping)
 
-            # Check if session is archived
             if participant["archived"]:
                 return render_template("join.html", error="Diese Session ist archiviert!")
 
-            # Check if session is not in lobby (already started or finished)
-            if participant["status"] != "lobby":
-                return render_template("join.html", error="Diese Session ist bereits gestartet oder beendet!")
+            current_participant_id = session.get("participant_id")
 
-            # Store participant data in session
+            if current_participant_id and current_participant_id != participant["id"]:
+                session.clear()
+
             session["participant_id"] = participant["id"]
             session["session_id"] = participant["session_id"]
             session["code"] = code
 
-            # If not yet joined, mark as joined and assign join_number
+            if participant["joined"]:
+                p_full = conn.execute(text("""
+                    SELECT current_round, ptype
+                    FROM participants
+                    WHERE id = :pid
+                """), {"pid": participant["id"]}).fetchone()
+
+                if participant["status"] == "lobby":
+                    return redirect(url_for("lobby"))
+                elif participant["status"] == "playing":
+                    r = p_full[0] or 1
+                    decided_check = conn.execute(text("""
+                        SELECT 1 FROM decisions
+                        WHERE participant_id = :pid AND round_number = :r
+                    """), {"pid": participant["id"], "r": r}).fetchone()
+
+                    if decided_check:
+                        return redirect(url_for("wait_view"))
+                    else:
+                        return redirect(url_for("round_view"))
+                elif participant["status"] == "done":
+                    return redirect(url_for("done"))
+                else:
+                    return redirect(url_for("lobby"))
+
+            if participant["status"] != "lobby":
+                return render_template("join.html", error="Diese Session ist bereits gestartet oder beendet!")
+
             if not participant["joined"]:
                 # Get max join_number for this session
                 max_result = conn.execute(text("""

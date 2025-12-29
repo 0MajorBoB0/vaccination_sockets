@@ -74,8 +74,10 @@ socket.on('reveal_status', (data) => {
   tbody.innerHTML = '';
   (data.players||[]).forEach(p=>{
     const tr = document.createElement('tr');
+    const isMe = p.player_no == {{ participant.join_number }};
+    const playerLabel = isMe ? 'Spieler ' + p.player_no + ' (Sie)' : 'Spieler ' + (p.player_no || '?');
     tr.innerHTML = `
-      <td>Spieler ${p.player_no || "?"}</td>
+      <td>${playerLabel}</td>
       <td class="mono">${p.choice || "-"}</td>
       <td class="mono">${fmt(p.cost)}</td>
       <td class="mono">${fmt(p.payout)}</td>`;
