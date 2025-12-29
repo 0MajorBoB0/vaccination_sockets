@@ -368,6 +368,126 @@ def admin_archive_session():
     return redirect(url_for("admin_dashboard"))
 
 
+# STEP 7: Participant routes
+@app.route("/join", methods=["GET", "POST"])
+def join():
+    """Join a session with participant code."""
+    if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
+
+        with get_db() as conn:
+            # Find participant by code
+            result = conn.execute(text("""
+                SELECT p.id, p.session_id, p.joined, p.join_number, s.status, s.archived
+                FROM participants p
+                JOIN sessions s ON p.session_id = s.id
+                WHERE p.code = :code
+            """), {"code": code})
+
+            participant = result.fetchone()
+
+            if not participant:
+                return render_template("join.html", error="Ungültiger Code!")
+
+            participant = dict(participant._mapping)
+
+            # Check if session is archived
+            if participant["archived"]:
+                return render_template("join.html", error="Diese Session ist archiviert!")
+
+            # Check if session is not in lobby (already started or finished)
+            if participant["status"] != "lobby":
+                return render_template("join.html", error="Diese Session ist bereits gestartet oder beendet!")
+
+            # Store participant data in session
+            session["participant_id"] = participant["id"]
+            session["session_id"] = participant["session_id"]
+            session["code"] = code
+
+            # If not yet joined, mark as joined and assign join_number
+            if not participant["joined"]:
+                # Get max join_number for this session
+                max_result = conn.execute(text("""
+                    SELECT COALESCE(MAX(join_number), 0) as max_num
+                    FROM participants
+                    WHERE session_id = :sid AND joined = 1
+                """), {"sid": participant["session_id"]})
+                max_num = max_result.fetchone()[0]
+
+                # Assign next join_number
+                new_join_number = max_num + 1
+
+                conn.execute(text("""
+                    UPDATE participants
+                    SET joined = 1, join_number = :join_num
+                    WHERE id = :pid
+                """), {"join_num": new_join_number, "pid": participant["id"]})
+
+                conn.commit()
+
+                # Notify all participants in this session's lobby via Socket.IO
+                socketio.emit('lobby_update', {
+                    'joined': new_join_number
+                }, room=f"session_{participant['session_id']}")
+
+            return redirect(url_for("lobby"))
+
+    return render_template("join.html", error=None)
+
+
+@app.route("/lobby")
+def lobby():
+    """Lobby - wait for all participants to join."""
+    participant_id = session.get("participant_id")
+    session_id = session.get("session_id")
+
+    if not participant_id or not session_id:
+        return redirect(url_for("join"))
+
+    with get_db() as conn:
+        # Get session info
+        s_result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, status
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return redirect(url_for("join"))
+
+        session_data = dict(session_data._mapping)
+
+        # Get participant info
+        p_result = conn.execute(text("""
+            SELECT id, code, joined, join_number
+            FROM participants
+            WHERE id = :pid
+        """), {"pid": participant_id})
+
+        participant = p_result.fetchone()
+
+        if not participant:
+            return redirect(url_for("join"))
+
+        participant = dict(participant._mapping)
+
+        # Count joined participants
+        count_result = conn.execute(text("""
+            SELECT COUNT(*) as joined_count
+            FROM participants
+            WHERE session_id = :sid AND joined = 1
+        """), {"sid": session_id})
+
+        joined_count = count_result.fetchone()[0]
+
+    return render_template("lobby.html",
+                         session=session_data,
+                         participant=participant,
+                         joined=joined_count)
+
+
 @socketio.event
 def my_event(message):
     session['receive_count'] = session.get('receive_count', 0) + 1
@@ -486,6 +606,51 @@ def handle_admin_get_sessions():
             sessions.append(s)
 
     emit('admin_sessions_update', {'sessions': sessions})
+
+
+# STEP 7: Participant Socket.IO events
+@socketio.on('join_lobby')
+def handle_join_lobby(data):
+    """Participant joins lobby room for real-time updates."""
+    session_id = session.get("session_id")
+    participant_id = session.get("participant_id")
+
+    if not session_id or not participant_id:
+        return {'error': 'Not authenticated'}
+
+    # Join the session-specific room
+    room = f"session_{session_id}"
+    join_room(room)
+
+    # Send current lobby status to this participant
+    with get_db() as conn:
+        # Count joined participants
+        count_result = conn.execute(text("""
+            SELECT COUNT(*) as joined_count
+            FROM participants
+            WHERE session_id = :sid AND joined = 1
+        """), {"sid": session_id})
+
+        joined_count = count_result.fetchone()[0]
+
+        # Get session info
+        s_result = conn.execute(text("""
+            SELECT group_size, status
+            FROM sessions
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        session_data = s_result.fetchone()
+
+        if session_data:
+            session_dict = dict(session_data._mapping)
+            emit('lobby_status', {
+                'joined': joined_count,
+                'group_size': session_dict['group_size'],
+                'ready': joined_count >= session_dict['group_size']
+            })
+
+    print(f"Participant {participant_id} joined lobby room: {room}")
 
 
 @socketio.on('disconnect')

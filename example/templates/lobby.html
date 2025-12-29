@@ -1,20 +1,53 @@
 {% extends "base.html" %}
 {% block content %}
-<p>Session: <span class="badge mono">{{ session['name'] }}</span></p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+  <p style="margin: 0;">Session: <span class="badge mono">{{ session['name'] }}</span></p>
+  <span id="socketStatus" style="color: #6b7280; font-size: 14px;">🔌 Verbinde...</span>
+</div>
 <p>Spieler im Raum: <strong id="count">{{ joined }}/{{ session['group_size'] }}</strong></p>
 <div class="notice"><ul><li>Warte, bis alle Plätze belegt sind.</li><li>Dann startet Runde 1 automatisch.</li></ul></div>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
-setInterval(async ()=>{
-  const r = await fetch("/lobby_status?session_id={{ session['id'] }}&participant_id={{ participant['id'] }}");
-  const d = await r.json();
-  if(d.reset) {
-    window.location.href = "/join";
-    return;
-  }
-  document.getElementById('count').textContent = d.joined + "/" + d.group_size;
-  if(d.ready) window.location.href = "/round";
-}, 2000);
+  const socket = io();
+  const statusEl = document.getElementById('socketStatus');
+  const countEl = document.getElementById('count');
+
+  // Connect event
+  socket.on('connect', () => {
+    console.log('✅ Socket.IO connected:', socket.id);
+    statusEl.textContent = '🟢 Live verbunden';
+    statusEl.style.color = '#10b981';
+
+    // Join the lobby room for this session
+    socket.emit('join_lobby', {});
+  });
+
+  // Disconnect event
+  socket.on('disconnect', () => {
+    console.log('❌ Socket.IO disconnected');
+    statusEl.textContent = '🔴 Getrennt';
+    statusEl.style.color = '#ef4444';
+  });
+
+  // Lobby status update (initial + when others join)
+  socket.on('lobby_status', (data) => {
+    console.log('📊 Lobby status:', data);
+    countEl.textContent = data.joined + '/' + data.group_size;
+
+    // If lobby is full, start game
+    if (data.ready) {
+      console.log('✅ Lobby full! Starting game...');
+      window.location.href = '/round';
+    }
+  });
+
+  // Real-time update when new participant joins
+  socket.on('lobby_update', (data) => {
+    console.log('👤 New participant joined:', data.joined);
+    // Request updated status
+    socket.emit('join_lobby', {});
+  });
 </script>
 {% endblock %}
