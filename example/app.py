@@ -206,11 +206,23 @@ def migrate_db():
             try:
                 conn.execute(text("SELECT status FROM sessions LIMIT 1"))
             except:
-                # Column doesn't exist, add it
                 conn.execute(text("ALTER TABLE sessions ADD COLUMN status VARCHAR(20) DEFAULT 'lobby'"))
-                conn.commit()
 
-        return "OK - Database migrated successfully! Added missing columns.", 200
+            # Check and add 'created_at' column to participants table
+            try:
+                conn.execute(text("SELECT created_at FROM participants LIMIT 1"))
+            except:
+                conn.execute(text("ALTER TABLE participants ADD COLUMN created_at VARCHAR(30)"))
+
+            # Check and add 'ready_for_next' column to participants table
+            try:
+                conn.execute(text("SELECT ready_for_next FROM participants LIMIT 1"))
+            except:
+                conn.execute(text("ALTER TABLE participants ADD COLUMN ready_for_next TINYINT DEFAULT 0"))
+
+            conn.commit()
+
+        return "OK - Database migrated! Added status, created_at, ready_for_next columns.", 200
     except Exception as e:
         return f"ERROR - Migration failed: {str(e)}", 500
 
