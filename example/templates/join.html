@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Willkommen zum Experiment</h2>
+<div class="info-box" style="background: #1e2a3a; border: 1px solid #3a4a5a; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+  <h3 style="margin-top: 0; color: #7eb8da;">Spielerklärung: Vaccination Game</h3>
+  <p>Sie nehmen an einem wissenschaftlichen Experiment teil, dem sogenannten <strong>Vaccination Game</strong> (Impfspiel).</p>
+  <h4 style="color: #7eb8da;">Ablauf</h4>
+  <ul>
+    <li>Das Spiel besteht aus <strong>20 Runden</strong>.</li>
+    <li>In jeder Runde treffen Sie eine Entscheidung zwischen zwei Optionen.</li>
+  </ul>
+  <h4 style="color: #7eb8da;">Ihre Optionen</h4>
+  <ul>
+    <li><strong>Option A</strong> = Sie lassen sich impfen (feste Kosten)</li>
+    <li><strong>Option B</strong> = Sie lassen sich nicht impfen (variable Kosten)</li>
+  </ul>
+  <h4 style="color: #7eb8da;">Spielertypen</h4>
+  <p>Jeder Spieler hat einen <strong>Typ</strong> (1-6), der unterschiedliche Grundvoraussetzungen und damit verschiedene Kostenstrukturen mit sich bringt. Ihr Typ wird Ihnen zu Beginn zugewiesen.</p>
+  <h4 style="color: #7eb8da;">Kostenlogik</h4>
+  <ul>
+    <li>Die Kosten von <strong>Option A</strong> sind für Ihren Typ <strong>fest</strong>.</li>
+    <li>Die Kosten von <strong>Option B</strong> hängen davon ab, <strong>wie viele andere Spieler Option A wählen</strong>.</li>
+    <li>Je mehr Mitspieler sich impfen lassen (A wählen), desto <strong>geringer</strong> werden Ihre Kosten bei Option B.</li>
+    <li>Je weniger Mitspieler sich impfen lassen, desto <strong>höher</strong> werden Ihre Kosten bei Option B.</li>
+  </ul>
+  <h4 style="color: #7eb8da;">Ihr Ziel</h4>
+  <p>Treffen Sie in jeder Runde die <strong>optimale Entscheidung für sich selbst</strong>, um Ihre Kosten zu minimieren und Ihre Auszahlung zu maximieren.</p>
+  <div style="background: #2a3a4a; padding: 15px; border-radius: 6px; margin-top: 15px;">
+    <h4 style="color: #7eb8da; margin-top: 0;">Einverständniserklärung</h4>
+    <p style="margin-bottom: 10px;">Mit Ihrer Teilnahme bestätigen Sie:</p>
+    <ul style="margin-bottom: 15px;">
+      <li>Sie haben die Spielregeln gelesen und verstanden.</li>
+      <li>Sie nehmen freiwillig an diesem Experiment teil.</li>
+      <li>Sie sind damit einverstanden, dass Ihre anonymisierten Spielentscheidungen für wissenschaftliche Zwecke ausgewertet werden.</li>
+    </ul>
+    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+      <input type="checkbox" id="accept-checkbox" style="width: 20px; height: 20px; cursor: pointer;">
+      <span><strong>Ich habe die Spielerklärung gelesen und akzeptiere die Teilnahmebedingungen.</strong></span>
+    </label>
+  </div>
+</div>
+{% if error %}<div class="notice" style="background:#3b1f21">{{ error }}</div>{% endif %}
+<div id="code-section" style="opacity: 0.4; pointer-events: none; transition: opacity 0.3s;">
+  <h3>Code eingeben</h3>
+  <form method="post" style="margin-top:10px">
+    <div class="grid grid-2">
+      <div>
+        <label>Teilnahmecode</label>
+        <input type="text" name="code" id="code-input" placeholder="z. B. 7KJ4QZ" required>
+      </div>
+    </div>
+    <button type="submit" id="submit-btn">Beitreten</button>
+  </form>
+</div>
+<script>
+
+(function() {
+
+  const checkbox = document.getElementById('accept-checkbox');
+  const codeSection = document.getElementById('code-section');
+  const codeInput = document.getElementById('code-input');
+
+  checkbox.addEventListener('change', function() {
+
+    if (this.checked) {
+      codeSection.style.opacity = '1';
+      codeSection.style.pointerEvents = 'auto';
+      codeInput.focus();
+    } else {
+      codeSection.style.opacity = '0.4';
+      codeSection.style.pointerEvents = 'none';
+    }
+
+  });
+
+})();
+
+</script>
+
+{% endblock %}

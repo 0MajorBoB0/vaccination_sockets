@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>{{ title or 'Vaccination Game' }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>{{ title or "Vaccination Game" }}</h1>
+        {% block content %}{% endblock %}
+      </div>
+      <footer>Vaccination Game • SQLite gespeichert</footer>
+    </div>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

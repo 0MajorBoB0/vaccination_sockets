@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Ergebnis Runde {{ round_number }}</h2>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h3>Ihre Entscheidung</h3>
+    <p>Wahl: <span class="kbd mono">{{ my_choice or "–" }}</span></p>
+
+    <p><strong>Basisbetrag (M):</strong>
+      <span class="mono">{{ '%.0f'|format(base_payout or 0) }}</span> ECU
+    </p>
+
+    {% if my_choice == 'A' %}
+      <p>Ihre Kosten (A): <span class="mono">{{ '%.0f'|format(my_cost or 0) }}</span> ECU</p>
+      <p class="small">Unabhängig von den Entscheidungen anderer.</p>
+    {% elif my_choice == 'B' %}
+      <p>Ihre Kosten (B): <span class="mono">{{ '%.0f'|format(my_cost or 0) }}</span> ECU</p>
+      <p>Andere A in dieser Runde: <span class="mono">{{ others_A }}</span></p>
+      <p>B-Kostenstufe dieser Runde: <span class="mono">{{ '%.0f'|format(b_cost_round or 0) }}</span> ECU</p>
+    {% endif %}
+
+    <p><strong>Ihre Auszahlung (diese Runde):</strong>
+       <span class="mono">{{ '%.0f'|format(payout or 0) }}</span> ECU
+       <span class="small">(= M − Kosten)</span>
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Gruppenübersicht</h3>
+    <p>Größe: <span class="mono">{{ N }}</span> • Runde: <span class="mono">{{ round_number }}</span></p>
+    <p>Entschieden A/B: <span class="mono">{{ decided_A }}</span> / <span class="mono">{{ decided_B }}</span></p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  {% if next_round %}
+    <a href="/round"><button>Weiter</button></a>
+  {% else %}
+    <a href="/done"><button>Beenden</button></a>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Vaccination Game – Runde{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <h2>Runde {{ round_number }} von {{ session.rounds }}</h2>
+
+  <div class="infobar">
+    <div><strong>Aktuelles Guthaben (M):</strong> {{ balance_current }} ECU</div>
+    <div class="muted">Auszahlung dieser Runde = <strong>M</strong> − <strong>Kosten</strong>.</div>
+  </div>
+
+  <div class="cols">
+    <section class="card col">
+      <h3>Option A</h3>
+      <p>Fester Betrag, unabhängig von den Entscheidungen anderer.</p>
+      <p class="focus"><strong>Ihre Kosten (A): {{ a_cost_display }} ECU</strong></p>
+      <div class="grow"></div>
+      <button id="btnA" class="btn btn-primary">Option A wählen</button>
+    </section>
+
+    <section class="card col">
+      <h3>Option B</h3>
+      <p>Ihre Kosten hängen davon ab, wie viele <em>andere</em> in Ihrer Gruppe A wählen.</p>
+      <ul class="costlist">
+        {% for row in b_list %}
+          <li>
+            <span>{{ row.others }} Spieler A</span>
+            <span class="value">{{ row.cost }} ECU</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <div class="grow"></div>
+      <button id="btnB" class="btn btn-primary">Option B wählen</button>
+    </section>
+  </div>
+
+  <section class="card">
+    <h3>Status</h3>
+    <p>Eingänge: <span id="decided">0</span>/<span id="need">{{ session.group_size }}</span></p>
+    <p>Entschieden: <span id="decided_list">–</span></p>
+  </section>
+</div>
+
+<script>
+const sid = "{{ session.id }}";
+const pid = "{{ participant.id }}";
+const roundNo = Number("{{ round_number }}");
+const decidedSpan = document.getElementById('decided');
+const decidedList = document.getElementById('decided_list');
+document.getElementById('btnA').onclick = () => sendChoice('A');
+document.getElementById('btnB').onclick = () => sendChoice('B');
+
+async function sendChoice(choice) {
+  try {
+    const r = await fetch("{{ url_for('choose') }}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({choice})
+    });
+
+    if (r.ok || r.status === 409) {
+      window.location = "{{ url_for('wait_view') }}";
+      return;
+    }
+
+    alert("Senden fehlgeschlagen.");
+
+  } catch (e) {
+    alert("Netzwerkfehler.");
+  }
+}
+
+ 
+
+async function poll() {
+
+  try {
+
+    const url = "{{ url_for('round_status') }}" + "?session_id=" + encodeURIComponent(sid) + "&round=" + roundNo + "&participant_id=" + encodeURIComponent(pid);
+    const r = await fetch(url);
+
+    if (!r.ok) return;
+
+    const data = await r.json();
+
+    if (data.reset) {
+      window.location.href = "/join";
+      return;
+    }
+    decidedSpan.textContent = data.decided ?? 0;
+    decidedList.textContent = (data.decided_players && data.decided_players.length)
+      ? data.decided_players.join(", ")
+      : "–";
+    if (data.ready) window.location = "{{ url_for('reveal') }}";
+  } catch (e) {}
+}
+
+setInterval(poll, 2000);
+poll();
+</script>
+
+<style>
+.page { display:flex; flex-direction:column; gap:1rem; }
+.infobar { display:flex; gap:1.25rem; align-items:baseline; background:#0b1320; border:1px solid #1e2b43; border-radius:10px; padding:.75rem 1rem; }
+.cols { display:grid; grid-template-columns: 1fr 1fr; gap:1rem; align-items:stretch; }
+.card { background:#0b1320; border:1px solid #1e2b43; border-radius:10px; padding:1rem; }
+.col { display:flex; flex-direction:column; }
+.grow { flex:1 1 auto; }
+.focus { margin:.5rem 0 1rem 0; }
+.btn { padding:.6rem 1rem; border:none; border-radius:8px; cursor:pointer; }
+.btn-primary { background:#3a63ff; color:#fff; }
+.muted { color:#aab7d4; }
+.costlist { list-style:none; padding:0; margin:.75rem 0 1rem 0; }
+.costlist li { display:flex; justify-content:space-between; border-bottom:1px dashed #24324d; padding:.5rem .25rem; }
+.costlist .value { font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}

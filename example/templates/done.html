@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Danke für die Teilnahme!</h2>
+  {% if code %}<p>Dein Code: <span class="kbd mono">{{ code }}</span></p>{% endif %}
+  <p>Dein Endguthaben: <strong>{{ (balance or 0)|round(2) }} ECU</strong></p>
+  <p>Du kannst das Fenster schließen oder auf „Beenden“ klicken.</p>
+  <a href="/join"><button>Beenden</button></a>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Sicherheitsnetz: automatische Rückleitung nach 4 Sekunden
+  setTimeout(()=>{ window.location.href = "/join"; }, 10000);
+</script>
+{% endblock %}

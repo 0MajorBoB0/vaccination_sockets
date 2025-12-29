@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Vaccination Game – Session{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <div class="toolbar" style="display:flex;gap:.75rem;align-items:center; margin-bottom:1rem;">
+    <a class="btn" href="{{ url_for('admin') }}">← Zurück</a>
+    <a class="btn btn-primary" href="{{ url_for('admin_export_session_xlsx') }}?session_id={{ session.id }}">⬇ Download (.xlsx)</a>
+    <div class="muted" style="margin-left:auto;">
+      N={{ session.group_size }}, R={{ session.rounds }}, M={{ session.starting_balance }}
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Live-Status</h3>
+    <div class="muted tiny">
+      Runde: <span id="round_disp">{{ round_number }}</span> •
+      Entschieden: <span id="decided_count">0</span>/<span id="group_size">{{ session.group_size }}</span> •
+      Bereit für nächste Runde: <span id="ready_count">0</span>/<span id="group_size2">{{ session.group_size }}</span>
+    </div>
+
+    <div class="table-wrap" style="margin-top:.75rem;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Code</th>
+            <th>Runde</th>
+            <th>Entschieden</th>
+            <th>Wahl</th>
+            <th>Bereit</th>
+            <th>Letzte Auszahlung (Runde)</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+const sid = "{{ session.id }}";
+const rowsTbody = document.getElementById('rows');
+const decidedCountSpan = document.getElementById('decided_count');
+const readyCountSpan = document.getElementById('ready_count');
+const roundDisp = document.getElementById('round_disp');
+const groupSize = {{ session.group_size }};
+
+async function poll() {
+  try {
+    const url = "{{ url_for('admin_session_status') }}" + "?session_id=" + encodeURIComponent(sid);
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const data = await r.json();
+
+    decidedCountSpan.textContent = data.decided_count ?? 0;
+    readyCountSpan.textContent = data.ready_count ?? 0;
+    roundDisp.textContent = data.session?.current_round ?? '{{ round_number }}';
+
+    rowsTbody.innerHTML = "";
+    (data.participants || []).forEach((p, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${idx+1}</td>
+        <td>${p.code}</td>
+        <td>${p.round_display}</td>
+        <td>${p.decided ? "✓" : "–"}</td>
+        <td>${p.choice ?? "–"}</td>
+        <td class="${p.ready_for_next ? 'ready-yes' : ''}">${p.ready_for_next ? "✓" : "–"}</td>
+        <td>${(p.balance ?? "")}</td>
+      `;
+      rowsTbody.appendChild(tr);
+    });
+
+  } catch(e) {}
+}
+
+setInterval(poll, 1000);
+poll();
+</script>
+
+<style>
+.page { display:flex; flex-direction:column; gap:1rem; }
+.card { background:#0b1320; border:1px solid #1e2b43; border-radius:10px; padding:1rem; }
+.btn { padding:.5rem .9rem; border-radius:8px; background:#24324d; color:#e8eefc; text-decoration:none; }
+.btn-primary { background:#3a63ff; color:#fff; }
+.table { width:100%; border-collapse:collapse; }
+.table th, .table td { padding:.55rem .6rem; border-bottom:1px solid #1e2b43; text-align:left; }
+.tiny { font-size:.9rem; }
+.muted { color:#aab7d4; }
+.ready-yes { color:#4ade80; font-weight:bold; }
+</style>
+{% endblock %}

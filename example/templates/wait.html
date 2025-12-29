@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Vaccination Game – Warten{% endblock %}
+
+{% block content %}
+<div class="page">
+  <h2>Runde {{ round_number }} – Bitte warten</h2>
+
+  <section class="card">
+    <div class="muted">Wir warten, bis alle ihre Entscheidung abgegeben haben…</div>
+  </section>
+
+  <section class="card">
+    <h3>Status</h3>
+    <p>Eingänge: <span id="decided">{{ decided }}</span> / {{ session.group_size }}</p>
+  </section>
+</div>
+
+<script>
+const sid = "{{ session.id }}";
+const roundNo = Number("{{ round_number }}");
+const decidedSpan = document.getElementById('decided');
+
+async function poll() {
+  try {
+    const url = "{{ url_for('round_status') }}" + "?session_id=" + encodeURIComponent(sid) + "&round=" + roundNo;
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const data = await r.json();
+    decidedSpan.textContent = data.decided ?? 0;
+    if (data.ready) window.location = "{{ url_for('reveal') }}";
+  } catch (e) {}
+}
+setInterval(poll, 2000);
+poll();
+</script>
+
+<style>
+.page { display:flex; flex-direction:column; gap:1rem; }
+.card { background:#0b1320; border:1px solid #1e2b43; border-radius:10px; padding:1rem; }
+.muted { color:#aab7d4; }
+</style>
+{% endblock %}

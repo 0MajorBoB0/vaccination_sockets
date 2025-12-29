@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Runde {{ round_number }} – Ergebnisse</h2>
+<div class="notice">Entscheidungen & Auszahlungen dieser Runde</div>
+
+<div class="card">
+  <table class="table" style="margin-top:8px">
+    <thead>
+      <tr>
+        <th>Spieler</th>
+        <th>Wahl</th>
+        <th>Kosten</th>
+        <th>Auszahlung (M − Kosten)</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:12px">
+  {% if is_last_round %}
+  <h3>Spiel beenden</h3>
+  <p class="small">Dies war die letzte Runde. Sobald alle Spieler bestätigen, wird das Spiel beendet.</p>
+  {% else %}
+  <h3>Bereit für nächste Runde?</h3>
+  <p class="small">Sobald alle Spieler bereit sind, geht es automatisch zur nächsten Runde.</p>
+  {% endif %}
+
+  <div id="ready-status" style="margin:12px 0;">
+    <span id="ready-count">0</span> / <span id="group-size">{{ session.group_size }}</span> Spieler bereit
+  </div>
+
+  <div id="ready-players" style="margin:12px 0; display:flex; gap:8px; flex-wrap:wrap;"></div>
+
+  <button id="btn-ready" onclick="confirmReady()" style="margin-top:8px;">
+    {% if is_last_round %}Bestätigen & Beenden{% else %}Bereit für nächste Runde{% endif %}
+  </button>
+  <p id="already-ready" style="display:none; color:#4ade80; margin-top:8px;">
+    ✓ Sie haben bestätigt. Warten auf andere Spieler…
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const sid = "{{ session['id'] }}";
+const pid = "{{ participant['id'] }}";
+const r   = Number("{{ round_number }}");
+const isLastRound = {{ 'true' if is_last_round else 'false' }};
+const tbody = document.getElementById('tbody');
+const btnReady = document.getElementById('btn-ready');
+const alreadyReady = document.getElementById('already-ready');
+const readyCountEl = document.getElementById('ready-count');
+const groupSizeEl = document.getElementById('group-size');
+const readyPlayersEl = document.getElementById('ready-players');
+
+function fmt(x){ return Number(x||0).toFixed(0); }
+
+// Load round results once
+async function loadResults(){
+  const res = await fetch(`/round_status?session_id=${sid}&round=${r}&participant_id=${pid}`);
+  if(!res.ok) return;
+  const d = await res.json();
+  if (d.reset) {
+    window.location.href = "/join";
+    return;
+  }
+  tbody.innerHTML = '';
+  (d.players||[]).forEach(p=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>Spieler ${p.player_no || "?"}</td>
+      <td class="mono">${p.choice || "-"}</td>
+      <td class="mono">${fmt(p.cost)}</td>
+      <td class="mono">${fmt(p.payout)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// Confirm ready for next round
+async function confirmReady(){
+  btnReady.disabled = true;
+  const res = await fetch('/confirm_ready', {method:'POST'});
+  if(res.ok){
+    btnReady.style.display = 'none';
+    alreadyReady.style.display = 'block';
+  } else {
+    btnReady.disabled = false;
+  }
+}
+
+// Poll ready status
+async function pollReady(){
+  try {
+    const res = await fetch(`/ready_status?session_id=${sid}&participant_id=${pid}`);
+    if(!res.ok) return;
+    const d = await res.json();
+
+    if (d.reset) {
+      window.location.href = "/join";
+      return;
+    }
+
+    readyCountEl.textContent = d.ready_count;
+    groupSizeEl.textContent = d.group_size;
+
+    readyPlayersEl.innerHTML = '';
+    (d.players||[]).forEach(p=>{
+      const span = document.createElement('span');
+      span.className = 'player-ready-badge';
+      span.style.cssText = `
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        background: ${p.ready ? '#166534' : '#1e2b43'};
+        color: ${p.ready ? '#4ade80' : '#aab7d4'};
+        border: 1px solid ${p.ready ? '#22c55e' : '#2d3f5f'};
+      `;
+      span.textContent = `Spieler ${p.player_no}: ${p.ready ? '✓' : '…'}`;
+      readyPlayersEl.appendChild(span);
+    });
+
+    // Update button state based on own status
+    if(d.me_ready){
+      btnReady.style.display = 'none';
+      alreadyReady.style.display = 'block';
+    }
+
+    // If all ready, redirect to next round or done
+    if(d.all_ready){
+      window.location.href = isLastRound ? "/done" : "/round";
+    }
+  } catch(e) {}
+}
+
+// Initial load
+loadResults();
+pollReady();
+
+// Poll every 2 seconds
+setInterval(pollReady, 2000);
+</script>
+{% endblock %}

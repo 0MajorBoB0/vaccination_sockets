@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Session: <span class="badge mono">{{ session['name'] }}</span></p>
+<p>Spieler im Raum: <strong id="count">{{ joined }}/{{ session['group_size'] }}</strong></p>
+<div class="notice"><ul><li>Warte, bis alle Plätze belegt sind.</li><li>Dann startet Runde 1 automatisch.</li></ul></div>
+{% endblock %}
+{% block scripts %}
+<script>
+setInterval(async ()=>{
+  const r = await fetch("/lobby_status?session_id={{ session['id'] }}&participant_id={{ participant['id'] }}");
+  const d = await r.json();
+  if(d.reset) {
+    window.location.href = "/join";
+    return;
+  }
+  document.getElementById('count').textContent = d.joined + "/" + d.group_size;
+  if(d.ready) window.location.href = "/round";
+}, 2000);
+</script>
+{% endblock %}
