@@ -228,6 +228,7 @@ def index():
 
 # STEP 2: Test route to verify app still works after changes
 @app.route('/healthz')
+@admin_required
 def healthz():
     return "OK - Step 2: Test route works!", 200
 

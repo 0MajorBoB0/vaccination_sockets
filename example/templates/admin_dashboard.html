@@ -56,10 +56,6 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <form method="post" action="/admin/archive_session" style="display:inline">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button class="secondary" type="submit">Archivieren</button>
-        </form>
         <form method="post" action="/admin/delete_session" style="display:inline"
               onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
           <input type="hidden" name="session_id" value="{{ s['id'] }}">
@@ -80,7 +76,6 @@
       <td>
         {{ s['name'] }}
         <div class="badge mono">id={{ s['id'][:8] }}...</div>
-        <div class="badge" style="background:#1e3a5f">läuft</div>
       </td>
       <td>
         {% for p in s['participants'] %}
@@ -91,10 +86,6 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <form method="post" action="/admin/archive_session" style="display:inline">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button class="secondary" type="submit">Archivieren</button>
-        </form>
         <form method="post" action="/admin/delete_session" style="display:inline"
               onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
           <input type="hidden" name="session_id" value="{{ s['id'] }}">
@@ -125,10 +116,6 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <form method="post" action="/admin/archive_session" style="display:inline">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button class="secondary" type="submit">Archivieren</button>
-        </form>
         <form method="post" action="/admin/delete_session" style="display:inline"
               onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
           <input type="hidden" name="session_id" value="{{ s['id'] }}">
@@ -138,37 +125,6 @@
     </tr>
   {% else %}
     <tr><td colspan="4" class="center" style="opacity:.7">– keine abgeschlossenen Sessions –</td></tr>
-  {% endfor %}
-</table>
-
-<h2>Archivierte Sessions</h2>
-<table class="table">
-  <tr><th>Name</th><th>Codes</th><th>Parameter</th><th>Aktionen</th></tr>
-  {% for s in sessions_arch %}
-    <tr>
-      <td>
-        {{ s['name'] }}
-        <div class="badge mono">id={{ s['id'][:8] }}...</div>
-        <div class="badge" style="background:#1b3a2a">archiviert</div>
-      </td>
-      <td>
-        {% for p in s['participants'] %}
-          <span class="kbd mono">{{ p['code'] }}</span>{% if not loop.last %}, {% endif %}
-        {% endfor %}
-      </td>
-      <td class="mono">
-        N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
-      </td>
-      <td>
-        <form method="post" action="/admin/delete_session" style="display:inline"
-              onsubmit="return confirm('Archivierte Session endgültig LÖSCHEN? Nicht rückgängig!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0" type="submit">Löschen</button>
-        </form>
-      </td>
-    </tr>
-  {% else %}
-    <tr><td colspan="4" class="center" style="opacity:.7">– keine archivierten Sessions –</td></tr>
   {% endfor %}
 </table>
 {% endblock %}
