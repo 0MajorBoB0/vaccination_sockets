@@ -5,7 +5,7 @@
 <div class="page">
 
   <div class="toolbar" style="display:flex;gap:.75rem;align-items:center; margin-bottom:1rem;">
-    <a class="btn" href="{{ url_for('admin') }}">← Zurück</a>
+    <a class="btn" href="{{ url_for('admin_dashboard') }}">← Zurück</a>
     <a class="btn btn-primary" href="{{ url_for('admin_export_session_xlsx') }}?session_id={{ session.id }}">⬇ Download (.xlsx)</a>
     <div class="muted" style="margin-left:auto;">
       N={{ session.group_size }}, R={{ session.rounds }}, M={{ session.starting_balance }}
