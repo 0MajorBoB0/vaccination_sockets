@@ -4,6 +4,10 @@ from flask import Flask, render_template, session, request, \
 from flask_socketio import SocketIO, emit, join_room, leave_room, \
     close_room, rooms, disconnect
 
+# STEP 3: DB imports
+import os
+from sqlalchemy import create_engine, text
+
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
 # the best option based on installed packages.
@@ -35,6 +39,23 @@ def index():
 @app.route('/healthz')
 def healthz():
     return "OK - Step 2: Test route works!", 200
+
+
+# STEP 3: Test DB connection
+@app.route('/test_db')
+def test_db():
+    try:
+        DB_HOST = os.environ.get("DB_HOST", "GameTheoryUDE26.mysql.eu.pythonanywhere-services.com")
+        DB_USER = os.environ.get("DB_USER", "GameTheoryUDE26")
+        DB_PASSWORD = os.environ.get("DB_PASSWORD", "UDE2020EM")
+        DB_NAME = os.environ.get("DB_NAME", "GameTheoryUDE26$vaccination_game")
+
+        engine = create_engine(f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:3306/{DB_NAME}")
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            return "OK - Step 3: DB connection works!", 200
+    except Exception as e:
+        return f"ERROR - Step 3: {str(e)}", 500
 
 
 @socketio.event
