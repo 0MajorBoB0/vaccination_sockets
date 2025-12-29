@@ -15,23 +15,36 @@
   </section>
 </div>
 
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
 const sid = "{{ session.id }}";
 const roundNo = Number("{{ round_number }}");
 const decidedSpan = document.getElementById('decided');
 
-async function poll() {
-  try {
-    const url = "{{ url_for('round_status') }}" + "?session_id=" + encodeURIComponent(sid) + "&round=" + roundNo;
-    const r = await fetch(url);
-    if (!r.ok) return;
-    const data = await r.json();
-    decidedSpan.textContent = data.decided ?? 0;
-    if (data.ready) window.location = "{{ url_for('reveal') }}";
-  } catch (e) {}
-}
-setInterval(poll, 2000);
-poll();
+const socket = io();
+
+socket.on('connect', () => {
+  console.log('Socket.IO verbunden:', socket.id);
+  socket.emit('join_round', {});
+});
+
+socket.on('disconnect', () => {
+  console.log('Socket.IO getrennt');
+});
+
+socket.on('round_status', (data) => {
+  console.log('Runden Status:', data);
+  decidedSpan.textContent = data.decided ?? 0;
+  if (data.ready) {
+    console.log('Alle Spieler haben entschieden');
+    window.location = "{{ url_for('reveal') }}";
+  }
+});
+
+socket.on('round_decision', (data) => {
+  console.log('Spieler hat entschieden, Runde', data.round);
+  socket.emit('join_round', {});
+});
 </script>
 
 <style>
