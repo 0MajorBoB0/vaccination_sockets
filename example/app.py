@@ -163,7 +163,8 @@ def background_thread():
 
 @app.route('/')
 def index():
-    return render_template('index.html', async_mode=socketio.async_mode)
+    """Redirect to join page as default landing page for participants."""
+    return redirect(url_for('join'))
 
 
 # STEP 2: Test route to verify app still works after changes
