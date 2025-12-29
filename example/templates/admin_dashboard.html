@@ -56,10 +56,15 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <button class="secondary">Details</button>
-        <button class="secondary">Reset</button>
-        <button class="secondary">Archivieren</button>
-        <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0">Löschen</button>
+        <form method="post" action="/admin/archive_session" style="display:inline">
+          <input type="hidden" name="session_id" value="{{ s['id'] }}">
+          <button class="secondary" type="submit">Archivieren</button>
+        </form>
+        <form method="post" action="/admin/delete_session" style="display:inline"
+              onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
+          <input type="hidden" name="session_id" value="{{ s['id'] }}">
+          <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0" type="submit">Löschen</button>
+        </form>
       </td>
     </tr>
   {% else %}
@@ -85,9 +90,15 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <button class="secondary">Details</button>
-        <button class="secondary">Archivieren</button>
-        <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0">Löschen</button>
+        <form method="post" action="/admin/archive_session" style="display:inline">
+          <input type="hidden" name="session_id" value="{{ s['id'] }}">
+          <button class="secondary" type="submit">Archivieren</button>
+        </form>
+        <form method="post" action="/admin/delete_session" style="display:inline"
+              onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
+          <input type="hidden" name="session_id" value="{{ s['id'] }}">
+          <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0" type="submit">Löschen</button>
+        </form>
       </td>
     </tr>
   {% else %}
@@ -114,8 +125,11 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <button class="secondary">Details</button>
-        <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0">Löschen</button>
+        <form method="post" action="/admin/delete_session" style="display:inline"
+              onsubmit="return confirm('Archivierte Session endgültig LÖSCHEN? Nicht rückgängig!');">
+          <input type="hidden" name="session_id" value="{{ s['id'] }}">
+          <button style="background:#ef4444;color:white;border-radius:12px;padding:10px 16px;border:0" type="submit">Löschen</button>
+        </form>
       </td>
     </tr>
   {% else %}

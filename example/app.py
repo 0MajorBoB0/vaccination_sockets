@@ -328,6 +328,46 @@ def admin_dashboard():
                          now=now)
 
 
+@app.route("/admin/delete_session", methods=["POST"])
+@admin_required
+def admin_delete_session():
+    """Delete a session and all its participants."""
+    session_id = request.form.get("session_id")
+
+    with get_db() as conn:
+        # Delete decisions first (if any)
+        conn.execute(text("DELETE FROM decisions WHERE session_id = :sid"), {"sid": session_id})
+
+        # Delete participants
+        conn.execute(text("DELETE FROM participants WHERE session_id = :sid"), {"sid": session_id})
+
+        # Delete session
+        conn.execute(text("DELETE FROM sessions WHERE id = :sid"), {"sid": session_id})
+
+        conn.commit()
+
+    # Notify admin clients
+    socketio.emit('session_deleted', {'session_id': session_id}, room='admin_room')
+
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/archive_session", methods=["POST"])
+@admin_required
+def admin_archive_session():
+    """Archive a session (set archived=1)."""
+    session_id = request.form.get("session_id")
+
+    with get_db() as conn:
+        conn.execute(text("UPDATE sessions SET archived = 1 WHERE id = :sid"), {"sid": session_id})
+        conn.commit()
+
+    # Notify admin clients
+    socketio.emit('session_archived', {'session_id': session_id}, room='admin_room')
+
+    return redirect(url_for("admin_dashboard"))
+
+
 @socketio.event
 def my_event(message):
     session['receive_count'] = session.get('receive_count', 0) + 1
