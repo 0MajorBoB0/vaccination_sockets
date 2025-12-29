@@ -195,6 +195,26 @@ def init_db_route():
         return f"ERROR - Step 5: {str(e)}", 500
 
 
+# STEP 5.1: Migrate existing tables (add missing columns)
+@app.route('/migrate_db')
+@admin_required
+def migrate_db():
+    """Add missing columns to existing tables."""
+    try:
+        with get_db() as conn:
+            # Check and add 'status' column to sessions table
+            try:
+                conn.execute(text("SELECT status FROM sessions LIMIT 1"))
+            except:
+                # Column doesn't exist, add it
+                conn.execute(text("ALTER TABLE sessions ADD COLUMN status VARCHAR(20) DEFAULT 'lobby'"))
+                conn.commit()
+
+        return "OK - Database migrated successfully! Added missing columns.", 200
+    except Exception as e:
+        return f"ERROR - Migration failed: {str(e)}", 500
+
+
 # STEP 4: Admin routes
 @app.route("/admin_login", methods=["GET", "POST"])
 def admin_login():
