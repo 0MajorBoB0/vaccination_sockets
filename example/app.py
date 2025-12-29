@@ -431,6 +431,260 @@ def admin_archive_session():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/session/<session_id>")
+@admin_required
+def admin_session_detail(session_id):
+    """Show detailed session view with live updates."""
+    with get_db() as conn:
+        # Load session data
+        s_result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, status
+            FROM sessions WHERE id = :sid
+        """), {"sid": session_id})
+
+        session_data = s_result.fetchone()
+        if not session_data:
+            return "Session not found", 404
+
+        session_dict = dict(session_data._mapping)
+
+        # Get current round (max of all participants)
+        r_result = conn.execute(text("""
+            SELECT MAX(current_round) as max_round FROM participants WHERE session_id = :sid
+        """), {"sid": session_id})
+        round_number = r_result.fetchone()[0] or 1
+
+    return render_template("admin_session.html", session=session_dict, round_number=round_number)
+
+
+@app.route("/admin_session_status")
+@admin_required
+def admin_session_status():
+    """API endpoint for live session status updates."""
+    session_id = request.args.get("session_id")
+
+    if not session_id:
+        return {"error": "session_id required"}, 400
+
+    with get_db() as conn:
+        # Get session info
+        s_result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, status
+            FROM sessions WHERE id = :sid
+        """), {"sid": session_id})
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return {"error": "Session not found"}, 404
+
+        session_dict = dict(session_data._mapping)
+
+        # Get current round
+        r_result = conn.execute(text("""
+            SELECT MAX(current_round) as max_round FROM participants WHERE session_id = :sid
+        """), {"sid": session_id})
+        current_round = r_result.fetchone()[0] or 1
+        session_dict['current_round'] = current_round
+
+        # Get all participants with their status
+        p_result = conn.execute(text("""
+            SELECT id, code, join_number, current_round, ptype, balance, ready_for_next
+            FROM participants WHERE session_id = :sid
+            ORDER BY join_number
+        """), {"sid": session_id})
+
+        participants = []
+        decided_count = 0
+        ready_count = 0
+
+        for p in p_result:
+            p_dict = dict(p._mapping)
+
+            # Check if participant has made a choice this round
+            ch_result = conn.execute(text("""
+                SELECT choice FROM choices
+                WHERE participant_id = :pid AND round = :rnd
+            """), {"pid": p_dict['id'], "rnd": current_round})
+            choice_row = ch_result.fetchone()
+
+            decided = choice_row is not None
+            if decided:
+                decided_count += 1
+                p_dict['choice'] = choice_row[0]
+            else:
+                p_dict['choice'] = None
+
+            p_dict['decided'] = decided
+            p_dict['round_display'] = f"{p_dict['current_round']}/{session_dict['rounds']}"
+
+            if p_dict['ready_for_next']:
+                ready_count += 1
+
+            participants.append(p_dict)
+
+        return {
+            "session": session_dict,
+            "participants": participants,
+            "decided_count": decided_count,
+            "ready_count": ready_count
+        }
+
+
+@app.route("/admin_export_session_xlsx")
+@admin_required
+def admin_export_session_xlsx():
+    """Export session data as Excel file."""
+    from flask import Response
+    import io
+
+    session_id = request.args.get("session_id")
+    if not session_id:
+        return "session_id required", 400
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+    except ImportError:
+        # Fallback to CSV if openpyxl not available
+        return admin_export_session_csv(session_id)
+
+    with get_db() as conn:
+        # Get session info
+        s_result = conn.execute(text("""
+            SELECT name, group_size, rounds, starting_balance, status
+            FROM sessions WHERE id = :sid
+        """), {"sid": session_id})
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return "Session not found", 404
+
+        session_dict = dict(session_data._mapping)
+
+        # Get all choices
+        ch_result = conn.execute(text("""
+            SELECT p.code, p.join_number, c.round, c.choice, c.cost, c.payout
+            FROM choices c
+            JOIN participants p ON c.participant_id = p.id
+            WHERE p.session_id = :sid
+            ORDER BY c.round, p.join_number
+        """), {"sid": session_id})
+
+        # Create Excel workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Session Data"
+
+        # Header styling
+        header_fill = PatternFill(start_color="3a63ff", end_color="3a63ff", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+
+        # Write session info
+        ws.append(["Session Name:", session_dict['name']])
+        ws.append(["Group Size (N):", session_dict['group_size']])
+        ws.append(["Rounds (R):", session_dict['rounds']])
+        ws.append(["Starting Balance (M):", session_dict['starting_balance']])
+        ws.append(["Status:", session_dict['status']])
+        ws.append([])  # Empty row
+
+        # Write data header
+        headers = ["Code", "Player #", "Round", "Choice", "Cost", "Payout"]
+        ws.append(headers)
+
+        # Style header row
+        header_row = ws.max_row
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=header_row, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Write data
+        for row in ch_result:
+            ws.append(list(row))
+
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column = list(column)
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            ws.column_dimensions[column[0].column_letter].width = adjusted_width
+
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Create response
+        filename = f"session_{session_dict['name'].replace(' ', '_')}.xlsx"
+        return Response(
+            output.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+
+
+def admin_export_session_csv(session_id):
+    """Fallback CSV export if openpyxl not available."""
+    from flask import Response
+    import io
+    import csv
+
+    with get_db() as conn:
+        # Get session info
+        s_result = conn.execute(text("""
+            SELECT name, group_size, rounds, starting_balance, status
+            FROM sessions WHERE id = :sid
+        """), {"sid": session_id})
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return "Session not found", 404
+
+        session_dict = dict(session_data._mapping)
+
+        # Get all choices
+        ch_result = conn.execute(text("""
+            SELECT p.code, p.join_number, c.round, c.choice, c.cost, c.payout
+            FROM choices c
+            JOIN participants p ON c.participant_id = p.id
+            WHERE p.session_id = :sid
+            ORDER BY c.round, p.join_number
+        """), {"sid": session_id})
+
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write session info
+        writer.writerow(["Session Name:", session_dict['name']])
+        writer.writerow(["Group Size (N):", session_dict['group_size']])
+        writer.writerow(["Rounds (R):", session_dict['rounds']])
+        writer.writerow(["Starting Balance (M):", session_dict['starting_balance']])
+        writer.writerow(["Status:", session_dict['status']])
+        writer.writerow([])  # Empty row
+
+        # Write header
+        writer.writerow(["Code", "Player #", "Round", "Choice", "Cost", "Payout"])
+
+        # Write data
+        for row in ch_result:
+            writer.writerow(list(row))
+
+        # Create response
+        filename = f"session_{session_dict['name'].replace(' ', '_')}.csv"
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+
+
 # STEP 7: Participant routes
 @app.route("/join", methods=["GET", "POST"])
 def join():
