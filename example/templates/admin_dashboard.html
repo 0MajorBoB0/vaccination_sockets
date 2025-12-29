@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+  <h2>Admin Dashboard</h2>
+  <a href="{{ url_for('admin_logout') }}" style="color: #ef4444;">Logout</a>
+</div>
+
+<div style="margin-bottom: 2rem;">
+  <h3>Sessions</h3>
+  {% if sessions %}
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #f3f4f6; text-align: left;">
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Name</th>
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Gruppe</th>
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Runden</th>
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Startguthaben</th>
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Erstellt</th>
+          <th style="padding: 0.75rem; border: 1px solid #e5e7eb;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">{{ s.name }}</td>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">{{ s.group_size }}</td>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">{{ s.rounds }}</td>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">{{ s.starting_balance }} ECU</td>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">{{ s.created_at }}</td>
+          <td style="padding: 0.75rem; border: 1px solid #e5e7eb;">
+            {% if s.archived %}
+              <span style="color: #6b7280;">Archiviert</span>
+            {% else %}
+              <span style="color: #10b981;">Aktiv</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="color: #6b7280;">Noch keine Sessions erstellt.</p>
+    <p><em>Session-Erstellung kommt im nächsten Schritt!</em></p>
+  {% endif %}
+</div>
+
+<div style="padding: 1rem; background: #f3f4f6; border-radius: 0.5rem;">
+  <p><strong>✅ Phase 1.2 erreicht:</strong> Admin-Login funktioniert!</p>
+  <p><strong>⏭️ Nächster Schritt:</strong> Session-Erstellung (Phase 1.3)</p>
+</div>
+{% endblock %}

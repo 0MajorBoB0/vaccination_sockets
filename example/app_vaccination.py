@@ -235,7 +235,23 @@ def init_db():
 
     print("✅ Database schema initialized successfully!")
 
-# ==================== ROUTES (Minimal for now) ====================
+# ==================== ADMIN HELPERS ====================
+
+def require_admin():
+    """Check if current user is logged in as admin."""
+    return flask_session.get("admin_ok") is True
+
+def admin_required(f):
+    """Decorator to require admin login."""
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not require_admin():
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ==================== ROUTES ====================
 
 @app.route("/")
 def index():
@@ -246,6 +262,41 @@ def index():
 def healthz():
     """Health check endpoint."""
     return "ok", 200
+
+# ==================== ADMIN ROUTES ====================
+
+@app.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+    """Admin login page."""
+    if request.method == "POST":
+        password = request.form.get("password", "").strip()
+        if password == ADMIN_PASSWORD:
+            flask_session["admin_ok"] = True
+            return redirect(url_for("admin_dashboard"))
+        else:
+            return render_template("admin_login.html", error="Falsches Passwort!")
+    return render_template("admin_login.html", error=None)
+
+@app.route("/admin_logout")
+def admin_logout():
+    """Admin logout."""
+    flask_session.pop("admin_ok", None)
+    return redirect(url_for("admin_login"))
+
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    """Admin dashboard - shows all sessions."""
+    with get_db() as conn:
+        # Get all sessions
+        result = conn.execute(text("""
+            SELECT id, name, group_size, rounds, starting_balance, created_at, archived
+            FROM sessions
+            ORDER BY created_at DESC
+        """))
+        sessions = [dict(row._mapping) for row in result]
+
+    return render_template("admin_dashboard.html", sessions=sessions)
 
 # ==================== MAIN ====================
 
