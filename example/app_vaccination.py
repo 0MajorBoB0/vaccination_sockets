@@ -341,12 +341,20 @@ def handle_disconnect():
 # ==================== MAIN ====================
 
 if __name__ == "__main__":
+    import sys
+
+    # Allow custom port via command line
+    port = 5001  # Changed from 5000 to avoid conflicts
+    if len(sys.argv) > 1 and sys.argv[1].startswith('--port='):
+        port = int(sys.argv[1].split('=')[1])
+
     print("=" * 60)
     print("🎮 VACCINATION GAME - SOCKET.IO VERSION")
     print("=" * 60)
     print(f"📊 DB: {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
     print(f"🔒 Admin Password: {ADMIN_PASSWORD}")
     print(f"🐛 Debug Mode: {DEBUG_MODE}")
+    print(f"🌐 Port: {port}")
     print("=" * 60)
 
     # Initialize database
@@ -356,6 +364,6 @@ if __name__ == "__main__":
     socketio.run(
         app,
         host="0.0.0.0",
-        port=5000,
+        port=port,
         debug=DEBUG_MODE
     )
