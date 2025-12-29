@@ -43,12 +43,51 @@
   </section>
 </div>
 
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
 const sid = "{{ session.id }}";
 const pid = "{{ participant.id }}";
 const roundNo = Number("{{ round_number }}");
 const decidedSpan = document.getElementById('decided');
 const decidedList = document.getElementById('decided_list');
+const needSpan = document.getElementById('need');
+
+// Socket.IO setup
+const socket = io();
+
+socket.on('connect', () => {
+  console.log('✅ Socket.IO connected:', socket.id);
+  // Join the round-specific room
+  socket.emit('join_round', {});
+});
+
+socket.on('disconnect', () => {
+  console.log('❌ Socket.IO disconnected');
+});
+
+// Real-time round status updates
+socket.on('round_status', (data) => {
+  console.log('📊 Round status:', data);
+  decidedSpan.textContent = data.decided ?? 0;
+  decidedList.textContent = (data.decided_players && data.decided_players.length)
+    ? data.decided_players.join(", ")
+    : "–";
+
+  // If all decided, redirect to reveal
+  if (data.ready) {
+    console.log('✅ All players decided! Going to reveal...');
+    window.location = "{{ url_for('reveal') }}";
+  }
+});
+
+// When someone makes a decision
+socket.on('round_decision', (data) => {
+  console.log('👤 Player decided in round', data.round);
+  // Request updated status
+  socket.emit('join_round', {});
+});
+
+// Button handlers
 document.getElementById('btnA').onclick = () => sendChoice('A');
 document.getElementById('btnB').onclick = () => sendChoice('B');
 
@@ -71,34 +110,6 @@ async function sendChoice(choice) {
     alert("Netzwerkfehler.");
   }
 }
-
- 
-
-async function poll() {
-
-  try {
-
-    const url = "{{ url_for('round_status') }}" + "?session_id=" + encodeURIComponent(sid) + "&round=" + roundNo + "&participant_id=" + encodeURIComponent(pid);
-    const r = await fetch(url);
-
-    if (!r.ok) return;
-
-    const data = await r.json();
-
-    if (data.reset) {
-      window.location.href = "/join";
-      return;
-    }
-    decidedSpan.textContent = data.decided ?? 0;
-    decidedList.textContent = (data.decided_players && data.decided_players.length)
-      ? data.decided_players.join(", ")
-      : "–";
-    if (data.ready) window.location = "{{ url_for('reveal') }}";
-  } catch (e) {}
-}
-
-setInterval(poll, 2000);
-poll();
 </script>
 
 <style>
