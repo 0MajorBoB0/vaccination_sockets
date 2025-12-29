@@ -2,7 +2,7 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
   <p style="margin: 0;">Session: <span class="badge mono">{{ session['name'] }}</span></p>
-  <span id="socketStatus" style="color: #6b7280; font-size: 14px;">🔌 Verbinde...</span>
+  <span id="socketStatus" style="color: #6b7280; font-size: 14px;">Verbinde...</span>
 </div>
 <p>Spieler im Raum: <strong id="count">{{ joined }}/{{ session['group_size'] }}</strong></p>
 <div class="notice"><ul><li>Warte, bis alle Plätze belegt sind.</li><li>Dann startet Runde 1 automatisch.</li></ul></div>
@@ -14,39 +14,30 @@
   const statusEl = document.getElementById('socketStatus');
   const countEl = document.getElementById('count');
 
-  // Connect event
   socket.on('connect', () => {
-    console.log('✅ Socket.IO connected:', socket.id);
-    statusEl.textContent = '🟢 Live verbunden';
+    console.log('Socket.IO verbunden:', socket.id);
+    statusEl.textContent = 'Live verbunden';
     statusEl.style.color = '#10b981';
-
-    // Join the lobby room for this session
     socket.emit('join_lobby', {});
   });
 
-  // Disconnect event
   socket.on('disconnect', () => {
-    console.log('❌ Socket.IO disconnected');
-    statusEl.textContent = '🔴 Getrennt';
+    console.log('Socket.IO getrennt');
+    statusEl.textContent = 'Getrennt';
     statusEl.style.color = '#ef4444';
   });
 
-  // Lobby status update (initial + when others join)
   socket.on('lobby_status', (data) => {
-    console.log('📊 Lobby status:', data);
+    console.log('Lobby Status:', data);
     countEl.textContent = data.joined + '/' + data.group_size;
-
-    // If lobby is full, start game
     if (data.ready) {
-      console.log('✅ Lobby full! Starting game...');
+      console.log('Lobby voll, Spiel startet');
       window.location.href = '/round';
     }
   });
 
-  // Real-time update when new participant joins
   socket.on('lobby_update', (data) => {
-    console.log('👤 New participant joined:', data.joined);
-    // Request updated status
+    console.log('Neuer Teilnehmer beigetreten:', data.joined);
     socket.emit('join_lobby', {});
   });
 </script>

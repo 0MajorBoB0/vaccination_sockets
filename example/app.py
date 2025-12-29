@@ -126,7 +126,7 @@ def b_cost_adapt(ptype: int, others_A: int, N: int) -> float:
 # STEP 5: Initialize database schema
 def init_db():
     """Initialize database schema with all required tables."""
-    print("🔧 Initializing database schema...")
+    print("Initializing database schema...")
 
     with get_db() as conn:
         # Sessions table

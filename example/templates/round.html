@@ -52,42 +52,35 @@ const decidedSpan = document.getElementById('decided');
 const decidedList = document.getElementById('decided_list');
 const needSpan = document.getElementById('need');
 
-// Socket.IO setup
 const socket = io();
 
 socket.on('connect', () => {
-  console.log('✅ Socket.IO connected:', socket.id);
-  // Join the round-specific room
+  console.log('Socket.IO verbunden:', socket.id);
   socket.emit('join_round', {});
 });
 
 socket.on('disconnect', () => {
-  console.log('❌ Socket.IO disconnected');
+  console.log('Socket.IO getrennt');
 });
 
-// Real-time round status updates
 socket.on('round_status', (data) => {
-  console.log('📊 Round status:', data);
+  console.log('Runden Status:', data);
   decidedSpan.textContent = data.decided ?? 0;
   decidedList.textContent = (data.decided_players && data.decided_players.length)
     ? data.decided_players.join(", ")
     : "–";
 
-  // If all decided, redirect to reveal
   if (data.ready) {
-    console.log('✅ All players decided! Going to reveal...');
+    console.log('Alle Spieler haben entschieden');
     window.location = "{{ url_for('reveal') }}";
   }
 });
 
-// When someone makes a decision
 socket.on('round_decision', (data) => {
-  console.log('👤 Player decided in round', data.round);
-  // Request updated status
+  console.log('Spieler hat entschieden, Runde', data.round);
   socket.emit('join_round', {});
 });
 
-// Button handlers
 document.getElementById('btnA').onclick = () => sendChoice('A');
 document.getElementById('btnB').onclick = () => sendChoice('B');
 
