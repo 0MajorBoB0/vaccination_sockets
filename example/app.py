@@ -976,7 +976,9 @@ def join():
             current_participant_id = session.get("participant_id")
 
             if current_participant_id and current_participant_id != participant["id"]:
-                session.clear()
+                # Clear only participant data, keep admin session intact
+                session.pop("participant_id", None)
+                session.pop("browser_token", None)
 
             # Check for duplicate login (prevent same code in multiple tabs/browsers)
             # Get browser_token from form (sent by JavaScript from localStorage)
