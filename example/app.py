@@ -453,6 +453,59 @@ def admin_delete_session():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/reset_session", methods=["POST"])
+@admin_required
+def admin_reset_session():
+    """Reset a session to lobby state - participants must rejoin with their codes."""
+    session_id = request.form.get("session_id")
+
+    with get_db() as conn:
+        # Get starting balance
+        s_result = conn.execute(text("""
+            SELECT starting_balance FROM sessions WHERE id = :sid
+        """), {"sid": session_id})
+        session_data = s_result.fetchone()
+
+        if not session_data:
+            return "Session not found", 404
+
+        starting_balance = session_data[0]
+
+        # Delete all decisions
+        conn.execute(text("DELETE FROM decisions WHERE session_id = :sid"), {"sid": session_id})
+
+        # Reset all participants (keep codes, reset joined status)
+        conn.execute(text("""
+            UPDATE participants
+            SET joined = 0,
+                join_number = NULL,
+                current_round = 1,
+                balance = :balance,
+                ready_for_next = 0,
+                completed = 0
+            WHERE session_id = :sid
+        """), {"sid": session_id, "balance": starting_balance})
+
+        # Reset session status to lobby
+        conn.execute(text("""
+            UPDATE sessions
+            SET status = 'lobby'
+            WHERE id = :sid
+        """), {"sid": session_id})
+
+        conn.commit()
+
+    # Emit Socket.IO event to kick all participants to /join
+    socketio.emit('session_reset', {
+        'message': 'Session wurde zurückgesetzt. Bitte neu joinen!'
+    }, room=f"session_{session_id}")
+
+    # Notify admin clients
+    socketio.emit('session_reset_admin', {'session_id': session_id}, room='admin_room')
+
+    return redirect(url_for("admin_dashboard"))
+
+
 @app.route("/admin/archive_session", methods=["POST"])
 @admin_required
 def admin_archive_session():
