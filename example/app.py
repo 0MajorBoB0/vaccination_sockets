@@ -1642,8 +1642,8 @@ def handle_join_reveal(data):
                 players.append({
                     "player_no": row[0],
                     "choice": row[1],
-                    "cost": row[2],
-                    "payout": row[3]
+                    "cost": float(row[2]) if row[2] is not None else 0,
+                    "payout": float(row[3]) if row[3] is not None else 0
                 })
 
             print(f"[join_reveal] Found {len(players)} players with decisions")
