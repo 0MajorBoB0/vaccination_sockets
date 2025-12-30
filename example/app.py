@@ -595,7 +595,7 @@ def admin_stress_test():
                 # Make choice via real HTTP POST
                 choice = random.choice(['A', 'B'])
                 resp = http_session.post(
-                    f"{base_url}/choice",
+                    f"{base_url}/choose",
                     json={'choice': choice},
                     timeout=10
                 )
@@ -606,7 +606,7 @@ def admin_stress_test():
 
                 # Wait a bit, then mark ready
                 time.sleep(random.uniform(0.5, 1.0))
-                http_session.post(f"{base_url}/ready", timeout=10)
+                http_session.post(f"{base_url}/confirm_ready", timeout=10)
 
             log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
 
