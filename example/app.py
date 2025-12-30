@@ -613,13 +613,13 @@ def admin_export_session_xlsx():
 
         session_dict = dict(session_data._mapping)
 
-        # Get all choices
+        # Get all decisions
         ch_result = conn.execute(text("""
-            SELECT p.code, p.join_number, c.round, c.choice, c.cost, c.payout
-            FROM choices c
-            JOIN participants p ON c.participant_id = p.id
-            WHERE p.session_id = :sid
-            ORDER BY c.round, p.join_number
+            SELECT p.code, p.join_number, d.round_number, d.choice, d.total_cost, d.payout
+            FROM decisions d
+            JOIN participants p ON d.participant_id = p.id
+            WHERE d.session_id = :sid
+            ORDER BY d.round_number, p.join_number
         """), {"sid": session_id})
 
         # Create Excel workbook
@@ -652,7 +652,16 @@ def admin_export_session_xlsx():
 
         # Write data
         for row in ch_result:
-            ws.append(list(row))
+            # Convert Decimal to float for Excel compatibility
+            row_data = [
+                row[0],  # code
+                row[1],  # join_number
+                row[2],  # round_number
+                row[3],  # choice
+                float(row[4]) if row[4] is not None else None,  # total_cost
+                float(row[5]) if row[5] is not None else None   # payout
+            ]
+            ws.append(row_data)
 
         # Auto-adjust column widths
         for column in ws.columns:
@@ -700,13 +709,13 @@ def admin_export_session_csv(session_id):
 
         session_dict = dict(session_data._mapping)
 
-        # Get all choices
+        # Get all decisions
         ch_result = conn.execute(text("""
-            SELECT p.code, p.join_number, c.round, c.choice, c.cost, c.payout
-            FROM choices c
-            JOIN participants p ON c.participant_id = p.id
-            WHERE p.session_id = :sid
-            ORDER BY c.round, p.join_number
+            SELECT p.code, p.join_number, d.round_number, d.choice, d.total_cost, d.payout
+            FROM decisions d
+            JOIN participants p ON d.participant_id = p.id
+            WHERE d.session_id = :sid
+            ORDER BY d.round_number, p.join_number
         """), {"sid": session_id})
 
         # Create CSV
@@ -726,7 +735,16 @@ def admin_export_session_csv(session_id):
 
         # Write data
         for row in ch_result:
-            writer.writerow(list(row))
+            # Convert Decimal to float for CSV compatibility
+            row_data = [
+                row[0],  # code
+                row[1],  # join_number
+                row[2],  # round_number
+                row[3],  # choice
+                float(row[4]) if row[4] is not None else None,  # total_cost
+                float(row[5]) if row[5] is not None else None   # payout
+            ]
+            writer.writerow(row_data)
 
         # Create response
         filename = f"session_{session_dict['name'].replace(' ', '_')}.csv"
