@@ -680,6 +680,29 @@ def admin_stress_test():
 
             log(f"Session {session_num}: 6 echte Spieler gestartet (HTTP + Socket.IO)", 'info')
 
+            # Wait for all players to join
+            time.sleep(2)
+
+            # Check if all players joined and start the game
+            with get_db() as conn:
+                result = conn.execute(text("""
+                    SELECT COUNT(*) as joined_count FROM participants
+                    WHERE session_id = :sid AND joined = 1
+                """), {"sid": session_id})
+                joined_count = result.scalar()
+
+                if joined_count == 6:
+                    # All players joined - start the game
+                    conn.execute(text("""
+                        UPDATE sessions SET status = 'playing' WHERE id = :sid
+                    """), {"sid": session_id})
+                    conn.commit()
+
+                    log(f"Session {session_num}: Spiel gestartet! (6/6 Spieler bereit)", 'success')
+                    socketio.emit('session_started', {'session_id': session_id}, room='admin_room')
+                else:
+                    log(f"Session {session_num}: Warnung - nur {joined_count}/6 Spieler gejoint!", 'warning')
+
             # Wait for all players to finish
             for t in player_threads:
                 t.join(timeout=300)  # 5 min max per session
