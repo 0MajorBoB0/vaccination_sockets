@@ -3,6 +3,7 @@ from flask import Flask, render_template, session, request, \
     copy_current_request_context, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room, \
     close_room, rooms, disconnect
+from flask_session import Session
 
 # STEP 3: DB imports
 import os
@@ -28,10 +29,19 @@ async_mode = None
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
+
+# Server-side session configuration (more reliable than cookie-based)
+app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours in seconds
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS (PythonAnywhere)
+app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'  # Server-side session storage
+app.config['SESSION_FILE_THRESHOLD'] = 500  # Max number of sessions to store
+
+# Initialize server-side sessions
+Session(app)
+
 socketio = SocketIO(app, async_mode=async_mode, logger=True, engineio_logger=True, cors_allowed_origins="*")
 
 # In-memory tracking for duplicate login prevention
