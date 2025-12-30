@@ -616,7 +616,7 @@ def admin_export_session_xlsx():
         # Get all decisions with full details
         decisions_result = conn.execute(text("""
             SELECT d.round_number, p.join_number, p.code, p.ptype, d.choice,
-                   d.cost as a_cost, d.cost as b_cost, d.total_cost, d.payout,
+                   d.a_cost, d.b_cost, d.total_cost, d.payout,
                    d.created_at, d.others_A
             FROM decisions d
             JOIN participants p ON d.participant_id = p.id
