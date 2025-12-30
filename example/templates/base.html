@@ -23,24 +23,31 @@
       if (window.location.pathname === '/join') return; // Join-Seite hat eigenes Handling
 
       const savedCode = localStorage.getItem('vaccination_participant_code');
+      const browserToken = localStorage.getItem('vaccination_browser_token');
 
       // Wenn kein Code gespeichert ist, nichts zu tun
       if (!savedCode) return;
 
-      // Prüfe, ob wir den aktuellen Participant-Code vom Server kennen
-      // Dazu machen wir einen kleinen API-Call
+      // Generiere Browser-Token wenn noch nicht vorhanden
+      if (!browserToken) {
+        const newToken = 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('vaccination_browser_token', newToken);
+      }
+
+      // Prüfe Session-Status
       fetch('/api/check_session')
         .then(r => r.json())
         .then(data => {
           // Wenn Server einen anderen Code hat als localStorage
           if (data.code && data.code !== savedCode) {
-            console.log('Session-Konflikt erkannt! Rejoin mit localStorage-Code:', savedCode);
-            // Mache automatischen Rejoin
-            window.location.href = '/join?auto_code=' + encodeURIComponent(savedCode);
+            console.log('⚠️ Session-Konflikt: Server hat Code "' + data.code + '", localStorage hat "' + savedCode + '"');
+            console.log('🔄 Auto-Rejoin mit localStorage-Code...');
+            // Sofortiger Rejoin mit localStorage-Code
+            window.location.replace('/join?auto_code=' + encodeURIComponent(savedCode));
           }
         })
         .catch(e => {
-          // Ignoriere Fehler (z.B. wenn Route nicht existiert)
+          console.error('Tab-Isolation Check failed:', e);
         });
     })();
     </script>

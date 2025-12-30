@@ -69,6 +69,20 @@
     if (code) {
       // Speichere Code in localStorage für diesen Tab
       localStorage.setItem('vaccination_participant_code', code);
+
+      // Generiere/hole Browser-Token für Duplicate-Detection
+      let browserToken = localStorage.getItem('vaccination_browser_token');
+      if (!browserToken) {
+        browserToken = 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('vaccination_browser_token', browserToken);
+      }
+
+      // Füge Token als hidden field hinzu
+      let tokenInput = document.createElement('input');
+      tokenInput.type = 'hidden';
+      tokenInput.name = 'browser_token';
+      tokenInput.value = browserToken;
+      form.appendChild(tokenInput);
     }
   });
 

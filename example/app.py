@@ -746,10 +746,11 @@ def join():
                 session.clear()
 
             # Check for duplicate login (prevent same code in multiple tabs/browsers)
-            browser_token = session.get("browser_token")
+            # Get browser_token from form (sent by JavaScript from localStorage)
+            browser_token = request.form.get("browser_token", "").strip()
             if not browser_token:
+                # Fallback: generate new token (shouldn't happen with JavaScript)
                 browser_token = str(uuid.uuid4())
-                session["browser_token"] = browser_token
 
             participant_id = participant["id"]
 
@@ -758,8 +759,9 @@ def join():
                     existing = active_participants[participant_id]
                     time_since_activity = time.time() - existing['last_activity']
 
-                    # If active within last 60 seconds AND different browser
+                    # If active within last 60 seconds AND different browser token
                     if time_since_activity < 60 and existing['browser_token'] != browser_token:
+                        print(f"⚠️ Duplicate login blocked: Code '{code}', existing token: {existing['browser_token'][:20]}..., new token: {browser_token[:20]}...")
                         return render_template("join.html",
                             error="Dieser Code wird bereits verwendet! Bitte warten Sie 60 Sekunden oder schließen Sie den anderen Tab.")
 
@@ -768,10 +770,12 @@ def join():
                     'browser_token': browser_token,
                     'last_activity': time.time()
                 }
+                print(f"✅ Login registered: Code '{code}', token: {browser_token[:20]}...")
 
             session["participant_id"] = participant["id"]
             session["session_id"] = participant["session_id"]
             session["code"] = code
+            session["browser_token"] = browser_token  # Store for validation
 
             if participant["joined"]:
                 p_full = conn.execute(text("""
