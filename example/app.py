@@ -337,6 +337,7 @@ def admin_login():
     if request.method == "POST":
         password = request.form.get("password", "").strip()
         if password == ADMIN_PASSWORD:
+            session.permanent = True  # Make session persistent
             session["admin_ok"] = True
             return redirect(url_for("admin_dashboard"))
         else:
