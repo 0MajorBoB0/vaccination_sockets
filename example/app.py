@@ -1787,9 +1787,9 @@ def handle_join_round(data):
 
         r = participant[0] or 1
 
-        # Join the round-specific room
-        room = f"round_{session_id}_{r}"
-        join_room(room)
+        # Join both the session room (for resets) AND round-specific room
+        join_room(f"session_{session_id}")  # For session-wide events (reset, etc.)
+        join_room(f"round_{session_id}_{r}")  # For round-specific events
 
         # Send current round status to this participant
         # Count decisions for this round
