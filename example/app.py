@@ -461,73 +461,81 @@ def admin_session_detail(session_id):
 @admin_required
 def admin_session_status():
     """API endpoint for live session status updates."""
+    from flask import jsonify
+
     session_id = request.args.get("session_id")
 
     if not session_id:
-        return {"error": "session_id required"}, 400
+        return jsonify({"error": "session_id required"}), 400
 
-    with get_db() as conn:
-        # Get session info
-        s_result = conn.execute(text("""
-            SELECT id, name, group_size, rounds, starting_balance, status
-            FROM sessions WHERE id = :sid
-        """), {"sid": session_id})
-        session_data = s_result.fetchone()
+    try:
+        with get_db() as conn:
+            # Get session info
+            s_result = conn.execute(text("""
+                SELECT id, name, group_size, rounds, starting_balance, status
+                FROM sessions WHERE id = :sid
+            """), {"sid": session_id})
+            session_data = s_result.fetchone()
 
-        if not session_data:
-            return {"error": "Session not found"}, 404
+            if not session_data:
+                return jsonify({"error": "Session not found"}), 404
 
-        session_dict = dict(session_data._mapping)
+            session_dict = dict(session_data._mapping)
 
-        # Get current round
-        r_result = conn.execute(text("""
-            SELECT MAX(current_round) as max_round FROM participants WHERE session_id = :sid
-        """), {"sid": session_id})
-        current_round = r_result.fetchone()[0] or 1
-        session_dict['current_round'] = current_round
+            # Get current round
+            r_result = conn.execute(text("""
+                SELECT MAX(current_round) as max_round FROM participants WHERE session_id = :sid
+            """), {"sid": session_id})
+            current_round = r_result.fetchone()[0] or 1
+            session_dict['current_round'] = current_round
 
-        # Get all participants with their status
-        p_result = conn.execute(text("""
-            SELECT id, code, join_number, current_round, ptype, balance, ready_for_next
-            FROM participants WHERE session_id = :sid
-            ORDER BY join_number
-        """), {"sid": session_id})
+            # Get all participants with their status
+            p_result = conn.execute(text("""
+                SELECT id, code, join_number, current_round, ptype, balance, ready_for_next
+                FROM participants WHERE session_id = :sid
+                ORDER BY join_number
+            """), {"sid": session_id})
 
-        participants = []
-        decided_count = 0
-        ready_count = 0
+            participants = []
+            decided_count = 0
+            ready_count = 0
 
-        for p in p_result:
-            p_dict = dict(p._mapping)
+            for p in p_result:
+                p_dict = dict(p._mapping)
 
-            # Check if participant has made a choice this round
-            ch_result = conn.execute(text("""
-                SELECT choice FROM choices
-                WHERE participant_id = :pid AND round = :rnd
-            """), {"pid": p_dict['id'], "rnd": current_round})
-            choice_row = ch_result.fetchone()
+                # Check if participant has made a choice this round
+                ch_result = conn.execute(text("""
+                    SELECT choice FROM choices
+                    WHERE participant_id = :pid AND round = :rnd
+                """), {"pid": p_dict['id'], "rnd": current_round})
+                choice_row = ch_result.fetchone()
 
-            decided = choice_row is not None
-            if decided:
-                decided_count += 1
-                p_dict['choice'] = choice_row[0]
-            else:
-                p_dict['choice'] = None
+                decided = choice_row is not None
+                if decided:
+                    decided_count += 1
+                    p_dict['choice'] = choice_row[0]
+                else:
+                    p_dict['choice'] = None
 
-            p_dict['decided'] = decided
-            p_dict['round_display'] = f"{p_dict['current_round']}/{session_dict['rounds']}"
+                p_dict['decided'] = decided
+                p_dict['round_display'] = f"{p_dict['current_round']}/{session_dict['rounds']}"
 
-            if p_dict['ready_for_next']:
-                ready_count += 1
+                if p_dict['ready_for_next']:
+                    ready_count += 1
 
-            participants.append(p_dict)
+                participants.append(p_dict)
 
-        return {
-            "session": session_dict,
-            "participants": participants,
-            "decided_count": decided_count,
-            "ready_count": ready_count
-        }
+            return jsonify({
+                "session": session_dict,
+                "participants": participants,
+                "decided_count": decided_count,
+                "ready_count": ready_count
+            })
+    except Exception as e:
+        print(f"Error in admin_session_status: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/admin_export_session_xlsx")
