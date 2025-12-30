@@ -524,10 +524,12 @@ def admin_reset_session():
 @app.route("/admin/stress_test", methods=["POST"])
 @admin_required
 def admin_stress_test():
-    """Run a stress test with simulated players."""
+    """Run a stress test with REAL simulated players (HTTP + Socket.IO)."""
     import json
     import threading
     from queue import Queue
+    import requests as http_requests
+    import socketio as sio_client
 
     data = request.get_json()
     num_sessions = data.get('num_sessions', 1)
@@ -543,8 +545,81 @@ def admin_stress_test():
         """Add log message to queue."""
         progress_queue.put({'type': 'log', 'message': message, 'level': level})
 
+    # Capture base URL for HTTP requests
+    base_url = request.url_root.rstrip('/')
+
+    def simulate_player(player_id, code, session_num):
+        """Simulate one real player with HTTP session and Socket.IO."""
+        import time
+        import random
+
+        try:
+            # Create HTTP session (preserves cookies)
+            http_session = http_requests.Session()
+
+            # Generate browser token
+            browser_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
+
+            # Join via real HTTP POST
+            resp = http_session.post(
+                f"{base_url}/join",
+                data={'code': code, 'browser_token': browser_token},
+                allow_redirects=False,
+                timeout=10
+            )
+
+            if resp.status_code not in [200, 302]:
+                log(f"S{session_num}P{player_id}: Join fehlgeschlagen ({resp.status_code})", 'warning')
+                return
+
+            log(f"S{session_num}P{player_id}: Gejoint mit Code {code}", 'success')
+
+            # Connect Socket.IO with session cookies
+            sio = sio_client.Client(logger=False, engineio_logger=False)
+            cookies = http_session.cookies.get_dict()
+            cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+
+            try:
+                sio.connect(base_url, headers={"Cookie": cookie_string}, transports=['websocket', 'polling'])
+                log(f"S{session_num}P{player_id}: Socket.IO verbunden", 'info')
+            except Exception as e:
+                log(f"S{session_num}P{player_id}: Socket.IO Fehler - {e}", 'warning')
+
+            # Wait for game to start
+            time.sleep(2)
+
+            # Play 20 rounds
+            for round_num in range(1, 21):
+                time.sleep(random.uniform(1, 2.5))  # Realistic thinking time
+
+                # Make choice via real HTTP POST
+                choice = random.choice(['A', 'B'])
+                resp = http_session.post(
+                    f"{base_url}/choice",
+                    json={'choice': choice},
+                    timeout=10
+                )
+
+                if resp.status_code != 200:
+                    log(f"S{session_num}P{player_id}: Choice fehlgeschlagen in Runde {round_num}", 'warning')
+                    break
+
+                # Wait a bit, then mark ready
+                time.sleep(random.uniform(0.5, 1.0))
+                http_session.post(f"{base_url}/ready", timeout=10)
+
+            log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
+
+            # Cleanup
+            if sio.connected:
+                sio.disconnect()
+            http_session.close()
+
+        except Exception as e:
+            log(f"S{session_num}P{player_id}: Fehler - {str(e)}", 'error')
+
     def simulate_session(session_num):
-        """Simulate one complete session with 6 players."""
+        """Simulate one complete session with 6 REAL players."""
         import time
         import random
 
@@ -565,16 +640,12 @@ def admin_stress_test():
                 })
 
                 # Create 6 participants with random types
-                participant_ids = []
                 participant_codes = []
-                participant_types = []
                 for i in range(6):
                     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                     participant_id = str(uuid.uuid4())
                     ptype = random.choice([1, 2, 3, 4, 5])  # Random player type
-                    participant_ids.append(participant_id)
                     participant_codes.append(code)
-                    participant_types.append(ptype)
 
                     conn.execute(text("""
                         INSERT INTO participants (id, session_id, code, joined, balance, current_round, ptype, created_at)
@@ -589,127 +660,31 @@ def admin_stress_test():
 
                 conn.commit()
 
-            log(f"Session {session_num}: 6 Teilnehmer erstellt", 'success')
+            log(f"Session {session_num}: 6 Teilnehmer-Codes erstellt", 'success')
 
             # Emit session_created event for admin dashboard
             socketio.emit('session_created', {'session_id': session_id}, room='admin_room')
-            time.sleep(0.5)  # Brief pause to see in "Offene Sessions"
+            time.sleep(0.3)  # Brief pause to see in "Offene Sessions"
 
-            # Simulate 6 players joining (directly in database)
-            for i, pid in enumerate(participant_ids):
-                time.sleep(random.uniform(0.1, 0.3))  # Realistic delay
+            # Spawn 6 REAL player threads (HTTP + Socket.IO)
+            player_threads = []
+            for i, code in enumerate(participant_codes):
+                t = threading.Thread(
+                    target=simulate_player,
+                    args=(i + 1, code, session_num),
+                    daemon=True
+                )
+                t.start()
+                player_threads.append(t)
+                time.sleep(random.uniform(0.2, 0.5))  # Stagger joins
 
-                # Mark player as joined
-                with get_db() as conn:
-                    conn.execute(text("""
-                        UPDATE participants
-                        SET joined = 1, join_number = :join_num
-                        WHERE id = :pid
-                    """), {"pid": pid, "join_num": i + 1})
-                    conn.commit()
+            log(f"Session {session_num}: 6 echte Spieler gestartet (HTTP + Socket.IO)", 'info')
 
-                # Emit lobby update for this join
-                socketio.emit('lobby_update', {'session_id': session_id}, room='admin_room')
-                socketio.emit('lobby_update', {'session_id': session_id}, room=f'session_{session_id}')
+            # Wait for all players to finish
+            for t in player_threads:
+                t.join(timeout=300)  # 5 min max per session
 
-            # All players joined - start the game
-            with get_db() as conn:
-                conn.execute(text("""
-                    UPDATE sessions SET status = 'playing' WHERE id = :sid
-                """), {"sid": session_id})
-                conn.commit()
-
-            log(f"Session {session_num}: Alle Spieler gejoint → Spiel gestartet", 'success')
-
-            # Emit session_started event
-            socketio.emit('session_started', {'session_id': session_id}, room='admin_room')
-            time.sleep(1.5)  # Pause so session appears in "Laufende Sessions"
-
-            # Simulate 20 rounds of gameplay with proper cost calculation
-            N = 6
-            M = 500  # starting balance
-            for round_num in range(1, 21):
-                time.sleep(random.uniform(0.3, 0.8))  # Slower for observation
-
-                # Each player makes a decision
-                choices = []
-                decision_ids = []
-                for idx, pid in enumerate(participant_ids):
-                    choice = random.choice(['A', 'B'])
-                    choices.append(choice)
-                    ptype = participant_types[idx]
-
-                    with get_db() as conn:
-                        result = conn.execute(text("""
-                            INSERT INTO decisions (session_id, participant_id, round_number, choice, created_at)
-                            VALUES (:sid, :pid, :r, :choice, :created_at)
-                            RETURNING id
-                        """), {
-                            "sid": session_id,
-                            "pid": pid,
-                            "r": round_num,
-                            "choice": choice,
-                            "created_at": iso_utc(utc_now())
-                        })
-                        decision_id = result.scalar()
-                        decision_ids.append((decision_id, pid, choice, ptype))
-                        conn.commit()
-
-                # Calculate costs and payouts for this round
-                total_A = sum(1 for c in choices if c == 'A')
-                with get_db() as conn:
-                    for did, pid, choice, ptype in decision_ids:
-                        if choice == "A":
-                            cost = a_cost_for(ptype)
-                            others_A = max(0, total_A - 1)
-                        else:
-                            others_A = total_A
-                            cost = b_cost_adapt(ptype, others_A, N)
-
-                        payout = max(M - float(cost), 0)
-
-                        conn.execute(text("""
-                            UPDATE decisions
-                            SET total_cost = :cost, payout = :payout, others_A = :others_A
-                            WHERE id = :did
-                        """), {
-                            "cost": cost,
-                            "payout": payout,
-                            "others_A": others_A,
-                            "did": did
-                        })
-
-                        conn.execute(text("""
-                            UPDATE participants
-                            SET balance = :payout, current_round = :r
-                            WHERE id = :pid
-                        """), {"payout": payout, "pid": pid, "r": round_num})
-
-                    conn.commit()
-
-                # All players ready
-                time.sleep(random.uniform(0.2, 0.4))
-                with get_db() as conn:
-                    conn.execute(text("""
-                        UPDATE participants
-                        SET ready_for_next = 1
-                        WHERE session_id = :sid
-                    """), {"sid": session_id})
-                    conn.commit()
-
-                log(f"Session {session_num}: Runde {round_num}/20 abgeschlossen (A:{total_A}, B:{N-total_A})", 'info')
-
-            # Mark session as done
-            with get_db() as conn:
-                conn.execute(text("""
-                    UPDATE sessions SET status = 'done' WHERE id = :sid
-                """), {"sid": session_id})
-                conn.commit()
-
-            # Emit game_finished event
-            socketio.emit('game_finished', {'session_id': session_id}, room='admin_room')
-
-            log(f"Session {session_num}: ✅ Komplett abgeschlossen!", 'success')
+            log(f"Session {session_num}: ✅ Alle Spieler fertig!", 'success')
 
         except Exception as e:
             log(f"Session {session_num}: ❌ Fehler - {str(e)}", 'error')
