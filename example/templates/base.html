@@ -14,6 +14,37 @@
       </div>
       <footer>Vaccination Game • SQLite gespeichert</footer>
     </div>
+
+    <!-- Tab-Isolation Script: Verhindert Session-Konflikte zwischen Tabs -->
+    <script>
+    (function() {
+      // Nur für Participant-Seiten (nicht Admin)
+      if (window.location.pathname.startsWith('/admin')) return;
+      if (window.location.pathname === '/join') return; // Join-Seite hat eigenes Handling
+
+      const savedCode = localStorage.getItem('vaccination_participant_code');
+
+      // Wenn kein Code gespeichert ist, nichts zu tun
+      if (!savedCode) return;
+
+      // Prüfe, ob wir den aktuellen Participant-Code vom Server kennen
+      // Dazu machen wir einen kleinen API-Call
+      fetch('/api/check_session')
+        .then(r => r.json())
+        .then(data => {
+          // Wenn Server einen anderen Code hat als localStorage
+          if (data.code && data.code !== savedCode) {
+            console.log('Session-Konflikt erkannt! Rejoin mit localStorage-Code:', savedCode);
+            // Mache automatischen Rejoin
+            window.location.href = '/join?auto_code=' + encodeURIComponent(savedCode);
+          }
+        })
+        .catch(e => {
+          // Ignoriere Fehler (z.B. wenn Route nicht existiert)
+        });
+    })();
+    </script>
+
     {% block scripts %}{% endblock %}
   </body>
 </html>

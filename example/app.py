@@ -1282,6 +1282,22 @@ def done():
                          session_id=session_id)
 
 
+# API: Check current session for tab-isolation
+@app.route("/api/check_session")
+def api_check_session():
+    """Return current participant code from session (for tab-isolation)."""
+    from flask import jsonify
+
+    code = session.get("code")
+    participant_id = session.get("participant_id")
+
+    return jsonify({
+        "code": code,
+        "participant_id": participant_id,
+        "has_session": bool(participant_id)
+    })
+
+
 @socketio.event
 def my_event(message):
     session['receive_count'] = session.get('receive_count', 0) + 1
