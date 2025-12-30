@@ -188,5 +188,17 @@
     console.log('🔄 Session reset:', data.session_id);
     location.reload();
   });
+
+  // Session started (lobby → playing)
+  socket.on('session_started', (data) => {
+    console.log('▶️ Session started:', data.session_id);
+    location.reload();
+  });
+
+  // Game finished (playing → done)
+  socket.on('game_finished', (data) => {
+    console.log('🏁 Game finished:', data.session_id);
+    location.reload();
+  });
 </script>
 {% endblock %}

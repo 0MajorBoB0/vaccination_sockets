@@ -1130,6 +1130,9 @@ def lobby():
 
             conn.commit()
 
+            # Notify admin dashboard that session has started
+            socketio.emit('session_started', {'session_id': session_id}, room='admin_room')
+
             return redirect(url_for("round_view"))
 
     return render_template("lobby.html",
