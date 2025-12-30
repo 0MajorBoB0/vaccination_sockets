@@ -554,6 +554,7 @@ def admin_stress_test():
         import random
 
         try:
+            print(f"🚀 S{session_num}P{player_id}: Thread gestartet mit Code {code}")
             log(f"S{session_num}P{player_id}: 🚀 Thread gestartet mit Code {code}", 'info')
 
             # Create HTTP session (preserves cookies)
@@ -563,6 +564,7 @@ def admin_stress_test():
             browser_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
 
             # Join via real HTTP POST (follow redirect to establish session)
+            print(f"📍 S{session_num}P{player_id}: POST zu {base_url}/join...")
             log(f"S{session_num}P{player_id}: POST zu {base_url}/join...", 'info')
             resp = http_session.post(
                 f"{base_url}/join",
@@ -571,12 +573,15 @@ def admin_stress_test():
                 timeout=10
             )
 
+            print(f"📍 S{session_num}P{player_id}: Join response status={resp.status_code}")
             log(f"S{session_num}P{player_id}: Join response status={resp.status_code}", 'info')
 
             if resp.status_code != 200:
+                print(f"❌ S{session_num}P{player_id}: Join fehlgeschlagen ({resp.status_code})")
                 log(f"S{session_num}P{player_id}: ❌ Join fehlgeschlagen ({resp.status_code})", 'warning')
                 return
 
+            print(f"✅ S{session_num}P{player_id}: Gejoint!")
             log(f"S{session_num}P{player_id}: ✅ Gejoint!", 'success')
 
             # Connect Socket.IO with session cookies
@@ -585,16 +590,21 @@ def admin_stress_test():
             cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
 
             try:
+                print(f"🔌 S{session_num}P{player_id}: Verbinde Socket.IO...")
                 log(f"S{session_num}P{player_id}: Verbinde Socket.IO...", 'info')
                 sio.connect(base_url, headers={"Cookie": cookie_string}, transports=['websocket', 'polling'])
+                print(f"✅ S{session_num}P{player_id}: Socket.IO verbunden")
                 log(f"S{session_num}P{player_id}: ✅ Socket.IO verbunden", 'info')
             except Exception as e:
+                print(f"❌ S{session_num}P{player_id}: Socket.IO Fehler - {e}")
                 log(f"S{session_num}P{player_id}: Socket.IO Fehler - {e}", 'warning')
 
             # Wait for game to start
+            print(f"⏳ S{session_num}P{player_id}: Warte 2 Sekunden...")
             log(f"S{session_num}P{player_id}: Warte 2 Sekunden...", 'info')
             time.sleep(2)
 
+            print(f"🎮 S{session_num}P{player_id}: Starte 20 Runden!")
             log(f"S{session_num}P{player_id}: 🎮 Starte 20 Runden!", 'info')
 
             # Play 20 rounds
@@ -603,6 +613,7 @@ def admin_stress_test():
 
                 # Make choice via real HTTP POST
                 choice = random.choice(['A', 'B'])
+                print(f"🎲 S{session_num}P{player_id}: R{round_num} POST /choose choice={choice}")
                 log(f"S{session_num}P{player_id}: R{round_num} POST /choose choice={choice}", 'info')
                 resp = http_session.post(
                     f"{base_url}/choose",
@@ -610,9 +621,11 @@ def admin_stress_test():
                     timeout=10
                 )
 
+                print(f"📥 S{session_num}P{player_id}: R{round_num} /choose status={resp.status_code}")
                 log(f"S{session_num}P{player_id}: R{round_num} /choose status={resp.status_code}", 'info')
 
                 if resp.status_code != 200:
+                    print(f"❌ S{session_num}P{player_id}: Choice fehlgeschlagen in Runde {round_num}")
                     log(f"S{session_num}P{player_id}: ❌ Choice fehlgeschlagen in Runde {round_num}", 'warning')
                     break
 
