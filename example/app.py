@@ -543,7 +543,10 @@ def admin_stress_test():
         """Add log message to queue."""
         progress_queue.put({'type': 'log', 'message': message, 'level': level})
 
-    def simulate_session(session_num, base_url):
+    # Capture base_url in request context BEFORE starting background thread
+    base_url = request.url_root.rstrip('/')
+
+    def simulate_session(session_num):
         """Simulate one complete session with 6 players."""
         import requests
         import time
@@ -648,11 +651,9 @@ def admin_stress_test():
 
     def run_stress_test():
         """Run all sessions in parallel."""
-        base_url = request.url_root.rstrip('/')
-
         threads = []
         for i in range(1, num_sessions + 1):
-            t = threading.Thread(target=simulate_session, args=(i, base_url))
+            t = threading.Thread(target=simulate_session, args=(i,))
             t.start()
             threads.append(t)
             time.sleep(random.uniform(0.1, 0.3))  # Stagger session starts
