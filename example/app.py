@@ -585,7 +585,7 @@ def admin_session_status():
 @app.route("/admin_export_session_xlsx")
 @admin_required
 def admin_export_session_xlsx():
-    """Export session data as Excel file."""
+    """Export session data as Excel file with multiple sheets."""
     from flask import Response
     import io
 
@@ -595,7 +595,7 @@ def admin_export_session_xlsx():
 
     try:
         import openpyxl
-        from openpyxl.styles import Font, PatternFill
+        from openpyxl.styles import Font, PatternFill, Alignment
     except ImportError:
         # Fallback to CSV if openpyxl not available
         return admin_export_session_csv(session_id)
@@ -603,7 +603,7 @@ def admin_export_session_xlsx():
     with get_db() as conn:
         # Get session info
         s_result = conn.execute(text("""
-            SELECT name, group_size, rounds, starting_balance, status
+            SELECT id, name, group_size, rounds, starting_balance, created_at
             FROM sessions WHERE id = :sid
         """), {"sid": session_id})
         session_data = s_result.fetchone()
@@ -613,68 +613,192 @@ def admin_export_session_xlsx():
 
         session_dict = dict(session_data._mapping)
 
-        # Get all decisions
-        ch_result = conn.execute(text("""
-            SELECT p.code, p.join_number, d.round_number, d.choice, d.total_cost, d.payout
+        # Get all decisions with full details
+        decisions_result = conn.execute(text("""
+            SELECT d.round_number, p.join_number, p.code, p.ptype, d.choice,
+                   d.cost as a_cost, d.cost as b_cost, d.total_cost, d.payout,
+                   d.created_at, d.others_A
             FROM decisions d
             JOIN participants p ON d.participant_id = p.id
             WHERE d.session_id = :sid
             ORDER BY d.round_number, p.join_number
         """), {"sid": session_id})
 
+        # Get all participants
+        participants_result = conn.execute(text("""
+            SELECT join_number, code, ptype, joined
+            FROM participants
+            WHERE session_id = :sid
+            ORDER BY join_number
+        """), {"sid": session_id})
+
         # Create Excel workbook
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Session Data"
 
         # Header styling
-        header_fill = PatternFill(start_color="3a63ff", end_color="3a63ff", fill_type="solid")
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF")
+        header_alignment = Alignment(horizontal="center", vertical="center")
 
-        # Write session info
-        ws.append(["Session Name:", session_dict['name']])
-        ws.append(["Group Size (N):", session_dict['group_size']])
-        ws.append(["Rounds (R):", session_dict['rounds']])
-        ws.append(["Starting Balance (M):", session_dict['starting_balance']])
-        ws.append(["Status:", session_dict['status']])
-        ws.append([])  # Empty row
+        # ============ DECISIONS SHEET ============
+        ws_decisions = wb.active
+        ws_decisions.title = "Decisions"
 
-        # Write data header
-        headers = ["Code", "Player #", "Round", "Choice", "Cost", "Payout"]
-        ws.append(headers)
+        # Headers for Decisions
+        decision_headers = ["round", "player_#", "code", "ptype", "choice",
+                           "a_cost", "b_cost", "total_cost", "payout", "created_at", "others"]
+        ws_decisions.append(decision_headers)
 
-        # Style header row
-        header_row = ws.max_row
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=header_row, column=col)
+        # Style headers
+        for col in range(1, len(decision_headers) + 1):
+            cell = ws_decisions.cell(row=1, column=col)
             cell.fill = header_fill
             cell.font = header_font
+            cell.alignment = header_alignment
 
-        # Write data
-        for row in ch_result:
-            # Convert Decimal to float for Excel compatibility
+        # Write decision data
+        for row in decisions_result:
             row_data = [
-                row[0],  # code
-                row[1],  # join_number
-                row[2],  # round_number
-                row[3],  # choice
-                float(row[4]) if row[4] is not None else None,  # total_cost
-                float(row[5]) if row[5] is not None else None   # payout
+                row[0],  # round_number
+                row[1],  # player_#
+                row[2],  # code
+                row[3],  # ptype
+                row[4],  # choice
+                float(row[5]) if row[5] is not None else None,  # a_cost
+                float(row[6]) if row[6] is not None else None,  # b_cost
+                float(row[7]) if row[7] is not None else None,  # total_cost
+                float(row[8]) if row[8] is not None else None,  # payout
+                str(row[9]) if row[9] else "",  # created_at
+                row[10] if row[10] is not None else ""  # others_A
             ]
-            ws.append(row_data)
+            ws_decisions.append(row_data)
 
-        # Auto-adjust column widths
-        for column in ws.columns:
+        # Auto-adjust column widths for Decisions
+        for column in ws_decisions.columns:
             max_length = 0
-            column = list(column)
+            column_letter = column[0].column_letter
             for cell in column:
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = (max_length + 2)
-            ws.column_dimensions[column[0].column_letter].width = adjusted_width
+            adjusted_width = min(max_length + 2, 50)
+            ws_decisions.column_dimensions[column_letter].width = adjusted_width
+
+        # ============ PARTICIPANTS SHEET ============
+        ws_participants = wb.create_sheet("Participants")
+
+        # Headers for Participants
+        participant_headers = ["player_no", "code", "ptype", "joined"]
+        ws_participants.append(participant_headers)
+
+        # Style headers
+        for col in range(1, len(participant_headers) + 1):
+            cell = ws_participants.cell(row=1, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        # Write participant data
+        for row in participants_result:
+            ws_participants.append(list(row))
+
+        # Auto-adjust column widths for Participants
+        for column in ws_participants.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws_participants.column_dimensions[column_letter].width = adjusted_width
+
+        # ============ SESSION SHEET ============
+        ws_session = wb.create_sheet("Session")
+
+        # Headers for Session
+        session_headers = ["id", "name", "group_size", "rounds", "starting_balance", "created_at"]
+        ws_session.append(session_headers)
+
+        # Style headers
+        for col in range(1, len(session_headers) + 1):
+            cell = ws_session.cell(row=1, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        # Write session data
+        session_row = [
+            session_dict['id'],
+            session_dict['name'],
+            session_dict['group_size'],
+            session_dict['rounds'],
+            float(session_dict['starting_balance']) if session_dict['starting_balance'] else None,
+            str(session_dict['created_at']) if session_dict.get('created_at') else ""
+        ]
+        ws_session.append(session_row)
+
+        # Auto-adjust column widths for Session
+        for column in ws_session.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws_session.column_dimensions[column_letter].width = adjusted_width
+
+        # ============ TYPE COST TABLE SHEET ============
+        ws_type_cost = wb.create_sheet("TypeCostTable")
+
+        # Headers for TypeCostTable
+        type_cost_headers = ["Typ", "A_cost", "B_cost_0", "B_cost_1", "B_cost_2", "B_cost_3", "B_cost_4"]
+        ws_type_cost.append(type_cost_headers)
+
+        # Style headers
+        for col in range(1, len(type_cost_headers) + 1):
+            cell = ws_type_cost.cell(row=1, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        # Write TypeCost data from TYPE_COST configuration
+        for ptype, costs in TYPE_COST.items():
+            b_costs = costs["B"] if isinstance(costs["B"], list) else [costs["B"]]
+            # Pad with None if less than 5 B_cost values
+            while len(b_costs) < 5:
+                b_costs.append(None)
+
+            row_data = [
+                ptype,
+                costs["A"],
+                b_costs[0] if len(b_costs) > 0 else None,
+                b_costs[1] if len(b_costs) > 1 else None,
+                b_costs[2] if len(b_costs) > 2 else None,
+                b_costs[3] if len(b_costs) > 3 else None,
+                b_costs[4] if len(b_costs) > 4 else None
+            ]
+            ws_type_cost.append(row_data)
+
+        # Auto-adjust column widths for TypeCostTable
+        for column in ws_type_cost.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 15)
+            ws_type_cost.column_dimensions[column_letter].width = adjusted_width
 
         # Save to bytes
         output = io.BytesIO()
