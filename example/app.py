@@ -213,12 +213,35 @@ def init_db():
                 round_number INT,
                 choice VARCHAR(1),
                 cost DECIMAL(10,2),
+                total_cost DECIMAL(10,2),
+                payout DECIMAL(10,2),
+                others_A INT,
                 created_at VARCHAR(30),
                 INDEX idx_session_round (session_id, round_number),
                 INDEX idx_participant_round (participant_id, round_number),
                 UNIQUE KEY ux_participant_round (participant_id, round_number)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """))
+
+        # Migrate existing decisions table - add missing columns if they don't exist
+        try:
+            conn.execute(text("""
+                ALTER TABLE decisions
+                ADD COLUMN IF NOT EXISTS total_cost DECIMAL(10,2),
+                ADD COLUMN IF NOT EXISTS payout DECIMAL(10,2),
+                ADD COLUMN IF NOT EXISTS others_A INT
+            """))
+        except Exception as e:
+            # MySQL doesn't support IF NOT EXISTS in ALTER TABLE, try individual columns
+            for col_def in [
+                ("total_cost", "DECIMAL(10,2)"),
+                ("payout", "DECIMAL(10,2)"),
+                ("others_A", "INT")
+            ]:
+                try:
+                    conn.execute(text(f"ALTER TABLE decisions ADD COLUMN {col_def[0]} {col_def[1]}"))
+                except Exception:
+                    pass  # Column already exists
 
         conn.commit()
 
