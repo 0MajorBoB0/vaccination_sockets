@@ -5,3 +5,4 @@ eventlet>=0.33.0
 SQLAlchemy>=2.0.0
 PyMySQL>=1.1.0
 cryptography>=41.0.0
+openpyxl>=3.0.0
