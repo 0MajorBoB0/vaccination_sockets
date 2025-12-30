@@ -8,3 +8,4 @@ cryptography>=41.0.0
 openpyxl>=3.0.0
 Flask-Session>=0.5.0
 requests>=2.28.0
+websocket-client>=1.6.0
