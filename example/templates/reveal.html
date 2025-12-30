@@ -135,6 +135,8 @@ async function confirmReady(){
   if(res.ok){
     btnReady.style.display = 'none';
     alreadyReady.style.display = 'block';
+    // Aktualisierte Daten vom Server holen
+    socket.emit('join_reveal', {});
   } else {
     btnReady.disabled = false;
   }

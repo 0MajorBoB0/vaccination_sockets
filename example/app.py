@@ -1626,22 +1626,30 @@ def handle_join_reveal(data):
         room = f"session_{session_id}"
         join_room(room)
 
-        results_result = conn.execute(text("""
-            SELECT p.join_number, d.choice, d.total_cost, d.payout
-            FROM decisions d
-            JOIN participants p ON p.id = d.participant_id
-            WHERE d.session_id = :sid AND d.round_number = :r
-            ORDER BY p.join_number
-        """), {"sid": session_id, "r": r})
+        print(f"[join_reveal] Participant {participant_id} joining reveal for session {session_id}, round {r}")
 
-        players = []
-        for row in results_result.fetchall():
-            players.append({
-                "player_no": row[0],
-                "choice": row[1],
-                "cost": row[2],
-                "payout": row[3]
-            })
+        try:
+            results_result = conn.execute(text("""
+                SELECT p.join_number, d.choice, d.total_cost, d.payout
+                FROM decisions d
+                JOIN participants p ON p.id = d.participant_id
+                WHERE d.session_id = :sid AND d.round_number = :r
+                ORDER BY p.join_number
+            """), {"sid": session_id, "r": r})
+
+            players = []
+            for row in results_result.fetchall():
+                players.append({
+                    "player_no": row[0],
+                    "choice": row[1],
+                    "cost": row[2],
+                    "payout": row[3]
+                })
+
+            print(f"[join_reveal] Found {len(players)} players with decisions")
+        except Exception as e:
+            print(f"[join_reveal] ERROR fetching decisions: {e}")
+            players = []
 
         ready_result = conn.execute(text("""
             SELECT p.join_number, p.ready_for_next, p.id
