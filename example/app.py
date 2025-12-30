@@ -521,6 +521,165 @@ def admin_reset_session():
     return redirect(url_for("admin_dashboard"))
 
 
+@app.route("/admin/stress_test", methods=["POST"])
+@admin_required
+def admin_stress_test():
+    """Run a stress test with simulated players."""
+    import json
+    import threading
+    from queue import Queue
+
+    data = request.get_json()
+    num_sessions = data.get('num_sessions', 1)
+
+    # Validate input
+    if num_sessions < 1 or num_sessions > 50:
+        return json.dumps({'type': 'error', 'message': 'Invalid number of sessions'}), 400
+
+    # Create a queue for progress updates
+    progress_queue = Queue()
+
+    def log(message, level='info'):
+        """Add log message to queue."""
+        progress_queue.put({'type': 'log', 'message': message, 'level': level})
+
+    def simulate_session(session_num, base_url):
+        """Simulate one complete session with 6 players."""
+        import requests
+        import time
+        import random
+
+        try:
+            session_name = f"Stresstest-{session_num}"
+            log(f"Session {session_num}: Erstelle Session '{session_name}'...")
+
+            # Create session directly in database
+            session_id = str(uuid.uuid4())
+            with get_db() as conn:
+                conn.execute(text("""
+                    INSERT INTO sessions (id, name, group_size, rounds, starting_balance, status, created_at)
+                    VALUES (:id, :name, 6, 5, 500, 'lobby', :created_at)
+                """), {
+                    "id": session_id,
+                    "name": session_name,
+                    "created_at": iso_utc(utc_now())
+                })
+
+                # Create 6 participants
+                participant_ids = []
+                participant_codes = []
+                for i in range(6):
+                    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                    participant_id = str(uuid.uuid4())
+                    participant_ids.append(participant_id)
+                    participant_codes.append(code)
+
+                    conn.execute(text("""
+                        INSERT INTO participants (id, session_id, code, joined, balance, current_round, created_at)
+                        VALUES (:id, :sid, :code, 0, 500, 1, :created_at)
+                    """), {
+                        "id": participant_id,
+                        "sid": session_id,
+                        "code": code,
+                        "created_at": iso_utc(utc_now())
+                    })
+
+                conn.commit()
+
+            log(f"Session {session_num}: 6 Teilnehmer erstellt", 'success')
+
+            # Simulate 6 players joining
+            for i, code in enumerate(participant_codes):
+                time.sleep(random.uniform(0.1, 0.3))  # Realistic delay
+
+                # Join via HTTP request
+                resp = requests.post(f"{base_url}/join",
+                                    data={'code': code, 'browser_token': str(uuid.uuid4())},
+                                    allow_redirects=False)
+
+                if resp.status_code not in [200, 302]:
+                    log(f"Session {session_num}: Player {i+1} join failed", 'warning')
+
+            log(f"Session {session_num}: Alle Spieler gejoint → Spiel gestartet", 'success')
+
+            # Simulate 5 rounds of gameplay
+            for round_num in range(1, 6):
+                time.sleep(random.uniform(0.2, 0.5))
+
+                # Each player makes a decision
+                for pid in participant_ids:
+                    choice = random.choice(['A', 'B'])
+                    with get_db() as conn:
+                        conn.execute(text("""
+                            INSERT INTO decisions (session_id, participant_id, round_number, choice, created_at)
+                            VALUES (:sid, :pid, :r, :choice, :created_at)
+                        """), {
+                            "sid": session_id,
+                            "pid": pid,
+                            "r": round_num,
+                            "choice": choice,
+                            "created_at": iso_utc(utc_now())
+                        })
+                        conn.commit()
+
+                # All players ready
+                time.sleep(random.uniform(0.1, 0.3))
+                with get_db() as conn:
+                    conn.execute(text("""
+                        UPDATE participants
+                        SET ready_for_next = 1
+                        WHERE session_id = :sid
+                    """), {"sid": session_id})
+                    conn.commit()
+
+                log(f"Session {session_num}: Runde {round_num}/5 abgeschlossen", 'info')
+
+            # Mark session as done
+            with get_db() as conn:
+                conn.execute(text("""
+                    UPDATE sessions SET status = 'done' WHERE id = :sid
+                """), {"sid": session_id})
+                conn.commit()
+
+            log(f"Session {session_num}: ✅ Komplett abgeschlossen!", 'success')
+
+        except Exception as e:
+            log(f"Session {session_num}: ❌ Fehler - {str(e)}", 'error')
+
+    def run_stress_test():
+        """Run all sessions in parallel."""
+        base_url = request.url_root.rstrip('/')
+
+        threads = []
+        for i in range(1, num_sessions + 1):
+            t = threading.Thread(target=simulate_session, args=(i, base_url))
+            t.start()
+            threads.append(t)
+            time.sleep(random.uniform(0.1, 0.3))  # Stagger session starts
+
+        # Wait for all threads to complete
+        for t in threads:
+            t.join()
+
+        progress_queue.put({
+            'type': 'complete',
+            'message': f'{num_sessions} Sessions mit {num_sessions * 6} Spielern simuliert'
+        })
+
+    # Start stress test in background thread
+    threading.Thread(target=run_stress_test, daemon=True).start()
+
+    # Stream progress updates using Server-Sent Events
+    def generate():
+        while True:
+            msg = progress_queue.get()
+            yield f"data: {json.dumps(msg)}\n\n"
+            if msg.get('type') == 'complete':
+                break
+
+    return app.response_class(generate(), mimetype='text/event-stream')
+
+
 @app.route("/admin/archive_session", methods=["POST"])
 @admin_required
 def admin_archive_session():
