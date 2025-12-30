@@ -40,5 +40,12 @@
     console.log('Neuer Teilnehmer beigetreten:', data.joined);
     socket.emit('join_lobby', {});
   });
+
+  // Session reset - redirect to join page
+  socket.on('session_reset', (data) => {
+    console.log('🔄 Session wurde zurückgesetzt:', data.message);
+    alert(data.message);
+    window.location.href = '/join';
+  });
 </script>
 {% endblock %}

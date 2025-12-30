@@ -45,6 +45,13 @@ socket.on('round_decision', (data) => {
   console.log('Spieler hat entschieden, Runde', data.round);
   socket.emit('join_round', {});
 });
+
+// Session reset - redirect to join page
+socket.on('session_reset', (data) => {
+  console.log('🔄 Session wurde zurückgesetzt:', data.message);
+  alert(data.message);
+  window.location.href = '/join';
+});
 </script>
 
 <style>

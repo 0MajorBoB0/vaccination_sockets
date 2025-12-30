@@ -129,6 +129,13 @@ socket.on('game_finished', () => {
   window.location.href = "/done";
 });
 
+// Session reset - redirect to join page
+socket.on('session_reset', (data) => {
+  console.log('🔄 Session wurde zurückgesetzt:', data.message);
+  alert(data.message);
+  window.location.href = '/join';
+});
+
 async function confirmReady(){
   btnReady.disabled = true;
   const res = await fetch('/confirm_ready', {method:'POST'});
