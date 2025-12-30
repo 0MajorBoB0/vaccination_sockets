@@ -21,4 +21,4 @@ echo "🔒 Admin Password: $ADMIN_PASSWORD"
 echo "================================"
 
 # Run the app
-python app_vaccination.py
+python app.py
