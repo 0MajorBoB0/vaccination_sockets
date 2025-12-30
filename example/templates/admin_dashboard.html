@@ -56,18 +56,20 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
-           style="display:inline-block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;margin-right:4px;font-size:14px">Details</a>
-        <form method="post" action="/admin/reset_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;margin-right:4px;font-size:14px" type="submit">↻ Reset</button>
-        </form>
-        <form method="post" action="/admin/delete_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px" type="submit">Löschen</button>
-        </form>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:120px">
+          <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
+             style="display:block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;text-align:center;font-size:14px">Details</a>
+          <form method="post" action="/admin/reset_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">↻ Reset</button>
+          </form>
+          <form method="post" action="/admin/delete_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">Löschen</button>
+          </form>
+        </div>
       </td>
     </tr>
   {% else %}
@@ -93,18 +95,20 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
-           style="display:inline-block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;margin-right:4px;font-size:14px">Details</a>
-        <form method="post" action="/admin/reset_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;margin-right:4px;font-size:14px" type="submit">↻ Reset</button>
-        </form>
-        <form method="post" action="/admin/delete_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px" type="submit">Löschen</button>
-        </form>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:120px">
+          <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
+             style="display:block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;text-align:center;font-size:14px">Details</a>
+          <form method="post" action="/admin/reset_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">↻ Reset</button>
+          </form>
+          <form method="post" action="/admin/delete_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">Löschen</button>
+          </form>
+        </div>
       </td>
     </tr>
   {% else %}
@@ -130,18 +134,20 @@
         N={{ s['group_size'] }}, R={{ s['rounds'] }}, M={{ '%.0f'|format(s['starting_balance']) }}
       </td>
       <td>
-        <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
-           style="display:inline-block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;margin-right:4px;font-size:14px">Details</a>
-        <form method="post" action="/admin/reset_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;margin-right:4px;font-size:14px" type="submit">↻ Reset</button>
-        </form>
-        <form method="post" action="/admin/delete_session" style="display:inline"
-              onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
-          <input type="hidden" name="session_id" value="{{ s['id'] }}">
-          <button style="background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px" type="submit">Löschen</button>
-        </form>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:120px">
+          <a href="{{ url_for('admin_session_detail', session_id=s['id']) }}"
+             style="display:block;background:#3a63ff;color:white;border-radius:8px;padding:8px 12px;text-decoration:none;text-align:center;font-size:14px">Details</a>
+          <form method="post" action="/admin/reset_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich ZURÜCKSETZEN? Alle Spieler müssen neu joinen!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#f59e0b;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">↻ Reset</button>
+          </form>
+          <form method="post" action="/admin/delete_session" style="margin:0"
+                onsubmit="return confirm('Session wirklich LÖSCHEN? Alle Daten werden gelöscht!');">
+            <input type="hidden" name="session_id" value="{{ s['id'] }}">
+            <button style="width:100%;background:#ef4444;color:white;border-radius:8px;padding:8px 12px;border:0;font-size:14px;cursor:pointer" type="submit">Löschen</button>
+          </form>
+        </div>
       </td>
     </tr>
   {% else %}
