@@ -19,6 +19,7 @@ import random
 import string
 import datetime
 from datetime import timezone
+import time
 
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
@@ -28,6 +29,11 @@ async_mode = None
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode, logger=True, engineio_logger=True, cors_allowed_origins="*")
+
+# In-memory tracking for duplicate login prevention
+# Format: {participant_id: {'browser_token': 'xxx', 'last_activity': timestamp}}
+active_participants = {}
+active_participants_lock = Lock()
 thread = None
 thread_lock = Lock()
 
@@ -96,9 +102,18 @@ def get_participant_state():
     """Get current participant and session state from database."""
     participant_id = session.get("participant_id")
     session_id = session.get("session_id")
+    browser_token = session.get("browser_token")
 
     if not participant_id or not session_id:
         return None, None
+
+    # Update activity timestamp for duplicate-login detection
+    if participant_id and browser_token:
+        with active_participants_lock:
+            if participant_id in active_participants:
+                # Only update if browser_token matches (prevent hijacking)
+                if active_participants[participant_id]['browser_token'] == browser_token:
+                    active_participants[participant_id]['last_activity'] = time.time()
 
     with get_db() as conn:
         p_result = conn.execute(text("""
@@ -729,6 +744,30 @@ def join():
 
             if current_participant_id and current_participant_id != participant["id"]:
                 session.clear()
+
+            # Check for duplicate login (prevent same code in multiple tabs/browsers)
+            browser_token = session.get("browser_token")
+            if not browser_token:
+                browser_token = str(uuid.uuid4())
+                session["browser_token"] = browser_token
+
+            participant_id = participant["id"]
+
+            with active_participants_lock:
+                if participant_id in active_participants:
+                    existing = active_participants[participant_id]
+                    time_since_activity = time.time() - existing['last_activity']
+
+                    # If active within last 60 seconds AND different browser
+                    if time_since_activity < 60 and existing['browser_token'] != browser_token:
+                        return render_template("join.html",
+                            error="Dieser Code wird bereits verwendet! Bitte warten Sie 60 Sekunden oder schließen Sie den anderen Tab.")
+
+                # Register/update this participant as active
+                active_participants[participant_id] = {
+                    'browser_token': browser_token,
+                    'last_activity': time.time()
+                }
 
             session["participant_id"] = participant["id"]
             session["session_id"] = participant["session_id"]
