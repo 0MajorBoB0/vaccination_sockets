@@ -560,15 +560,15 @@ def admin_stress_test():
             # Generate browser token
             browser_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
 
-            # Join via real HTTP POST
+            # Join via real HTTP POST (follow redirect to establish session)
             resp = http_session.post(
                 f"{base_url}/join",
                 data={'code': code, 'browser_token': browser_token},
-                allow_redirects=False,
+                allow_redirects=True,  # Follow redirect to establish session
                 timeout=10
             )
 
-            if resp.status_code not in [200, 302]:
+            if resp.status_code != 200:
                 log(f"S{session_num}P{player_id}: Join fehlgeschlagen ({resp.status_code})", 'warning')
                 return
 
