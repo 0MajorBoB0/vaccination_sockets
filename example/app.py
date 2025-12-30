@@ -503,12 +503,11 @@ def admin_session_status():
             for p in p_result:
                 p_dict = dict(p._mapping)
 
-                # Check if participant has made a choice this round
-                # Note: choices table might not exist, so we handle that gracefully
+                # Check if participant has made a decision this round
                 try:
                     ch_result = conn.execute(text("""
-                        SELECT choice FROM choices
-                        WHERE participant_id = :pid AND round = :rnd
+                        SELECT choice FROM decisions
+                        WHERE participant_id = :pid AND round_number = :rnd
                     """), {"pid": p_dict['id'], "rnd": current_round})
                     choice_row = ch_result.fetchone()
 
@@ -518,8 +517,9 @@ def admin_session_status():
                         p_dict['choice'] = choice_row[0]
                     else:
                         p_dict['choice'] = None
-                except Exception:
-                    # Choices table doesn't exist or query failed
+                except Exception as e:
+                    # Decisions table doesn't exist or query failed
+                    print(f"Warning: Could not query decisions: {e}")
                     decided = False
                     p_dict['choice'] = None
 
