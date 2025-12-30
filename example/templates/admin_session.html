@@ -45,6 +45,7 @@
   </section>
 </div>
 
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <script>
 const sid = "{{ session.id }}";
 const rowsTbody = document.getElementById('rows');
@@ -53,6 +54,44 @@ const readyCountSpan = document.getElementById('ready_count');
 const roundDisp = document.getElementById('round_disp');
 const statusDisp = document.getElementById('status_disp');
 const groupSize = {{ session.group_size }};
+
+const socket = io();
+
+socket.on('connect', () => {
+  console.log('✅ Socket.IO connected:', socket.id);
+  socket.emit('admin_connect');
+  poll(); // Initial load
+});
+
+socket.on('disconnect', () => {
+  console.log('❌ Socket.IO disconnected');
+});
+
+// Listen for any updates and refresh data
+socket.on('round_decision', () => {
+  console.log('🔄 Round decision update');
+  poll();
+});
+
+socket.on('player_ready', () => {
+  console.log('🔄 Player ready update');
+  poll();
+});
+
+socket.on('all_ready', () => {
+  console.log('🔄 All ready update');
+  poll();
+});
+
+socket.on('lobby_update', () => {
+  console.log('🔄 Lobby update');
+  poll();
+});
+
+socket.on('session_reset_admin', () => {
+  console.log('🔄 Session reset');
+  poll();
+});
 
 async function poll() {
   try {
@@ -100,7 +139,7 @@ async function poll() {
   }
 }
 
-setInterval(poll, 1000);
+// Initial poll on page load
 poll();
 </script>
 
