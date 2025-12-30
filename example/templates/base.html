@@ -14,44 +14,6 @@
       </div>
       <footer>Vaccination Game • SQLite gespeichert</footer>
     </div>
-
-    <!-- Tab-Isolation Script: Verhindert Session-Konflikte zwischen Tabs -->
-    <script>
-    (function() {
-      // Nur für Participant-Seiten (nicht Admin)
-      if (window.location.pathname.startsWith('/admin')) return;
-      if (window.location.pathname === '/join') return; // Join-Seite hat eigenes Handling
-
-      const savedCode = localStorage.getItem('vaccination_participant_code');
-      const browserToken = localStorage.getItem('vaccination_browser_token');
-
-      // Wenn kein Code gespeichert ist, nichts zu tun
-      if (!savedCode) return;
-
-      // Generiere Browser-Token wenn noch nicht vorhanden
-      if (!browserToken) {
-        const newToken = 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('vaccination_browser_token', newToken);
-      }
-
-      // Prüfe Session-Status
-      fetch('/api/check_session')
-        .then(r => r.json())
-        .then(data => {
-          // Wenn Server einen anderen Code hat als localStorage
-          if (data.code && data.code !== savedCode) {
-            console.log('⚠️ Session-Konflikt: Server hat Code "' + data.code + '", localStorage hat "' + savedCode + '"');
-            console.log('🔄 Auto-Rejoin mit localStorage-Code...');
-            // Sofortiger Rejoin mit localStorage-Code
-            window.location.replace('/join?auto_code=' + encodeURIComponent(savedCode));
-          }
-        })
-        .catch(e => {
-          console.error('Tab-Isolation Check failed:', e);
-        });
-    })();
-    </script>
-
     {% block scripts %}{% endblock %}
   </body>
 </html>

@@ -63,13 +63,10 @@
   const codeInput = document.getElementById('code-input');
   const form = codeSection.querySelector('form');
 
-  // Tab-Isolation: Bei erfolgreichem Join, speichere Code in localStorage
+  // Duplicate-Login-Schutz: Generiere unique Browser-Token
   form.addEventListener('submit', function(e) {
     const code = codeInput.value.trim().toUpperCase();
     if (code) {
-      // Speichere Code in localStorage für diesen Tab
-      localStorage.setItem('vaccination_participant_code', code);
-
       // Generiere/hole Browser-Token für Duplicate-Detection
       let browserToken = localStorage.getItem('vaccination_browser_token');
       if (!browserToken) {
@@ -87,7 +84,6 @@
   });
 
   checkbox.addEventListener('change', function() {
-
     if (this.checked) {
       codeSection.style.opacity = '1';
       codeSection.style.pointerEvents = 'auto';
@@ -96,31 +92,7 @@
       codeSection.style.opacity = '0.4';
       codeSection.style.pointerEvents = 'none';
     }
-
   });
-
-  // Auto-rejoin: Wenn localStorage-Code vorhanden, fülle Feld aus
-  const savedCode = localStorage.getItem('vaccination_participant_code');
-  if (savedCode && !codeInput.value) {
-    codeInput.value = savedCode;
-  }
-
-  // Auto-rejoin via URL-Parameter (von Tab-Isolation Script)
-  const urlParams = new URLSearchParams(window.location.search);
-  const autoCode = urlParams.get('auto_code');
-  if (autoCode) {
-    console.log('Auto-Rejoin mit Code:', autoCode);
-    // Checkbox automatisch aktivieren
-    checkbox.checked = true;
-    codeSection.style.opacity = '1';
-    codeSection.style.pointerEvents = 'auto';
-    // Code eintragen
-    codeInput.value = autoCode;
-    // Formular automatisch absenden
-    setTimeout(() => {
-      form.submit();
-    }, 100);
-  }
 
 })();
 
