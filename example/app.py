@@ -561,35 +561,43 @@ def admin_stress_test():
             with get_db() as conn:
                 conn.execute(text("""
                     INSERT INTO sessions (id, name, group_size, rounds, starting_balance, status, created_at)
-                    VALUES (:id, :name, 6, 5, 500, 'lobby', :created_at)
+                    VALUES (:id, :name, 6, 20, 500, 'lobby', :created_at)
                 """), {
                     "id": session_id,
                     "name": session_name,
                     "created_at": iso_utc(utc_now())
                 })
 
-                # Create 6 participants
+                # Create 6 participants with random types
                 participant_ids = []
                 participant_codes = []
+                participant_types = []
                 for i in range(6):
                     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                     participant_id = str(uuid.uuid4())
+                    ptype = random.choice([1, 2, 3, 4, 5])  # Random player type
                     participant_ids.append(participant_id)
                     participant_codes.append(code)
+                    participant_types.append(ptype)
 
                     conn.execute(text("""
-                        INSERT INTO participants (id, session_id, code, joined, balance, current_round, created_at)
-                        VALUES (:id, :sid, :code, 0, 500, 1, :created_at)
+                        INSERT INTO participants (id, session_id, code, joined, balance, current_round, ptype, created_at)
+                        VALUES (:id, :sid, :code, 0, 500, 1, :ptype, :created_at)
                     """), {
                         "id": participant_id,
                         "sid": session_id,
                         "code": code,
+                        "ptype": ptype,
                         "created_at": iso_utc(utc_now())
                     })
 
                 conn.commit()
 
             log(f"Session {session_num}: 6 Teilnehmer erstellt", 'success')
+
+            # Emit session_created event for admin dashboard
+            socketio.emit('session_created', {'session_id': session_id}, room='admin_room')
+            time.sleep(0.5)  # Brief pause to see in "Offene Sessions"
 
             # Simulate 6 players joining
             for i, code in enumerate(participant_codes):
@@ -605,17 +613,29 @@ def admin_stress_test():
 
             log(f"Session {session_num}: Alle Spieler gejoint → Spiel gestartet", 'success')
 
-            # Simulate 5 rounds of gameplay
-            for round_num in range(1, 6):
-                time.sleep(random.uniform(0.2, 0.5))
+            # Emit session_started event
+            socketio.emit('session_started', {'session_id': session_id}, room='admin_room')
+            time.sleep(1.5)  # Pause so session appears in "Laufende Sessions"
+
+            # Simulate 20 rounds of gameplay with proper cost calculation
+            N = 6
+            M = 500  # starting balance
+            for round_num in range(1, 21):
+                time.sleep(random.uniform(0.3, 0.8))  # Slower for observation
 
                 # Each player makes a decision
-                for pid in participant_ids:
+                choices = []
+                decision_ids = []
+                for idx, pid in enumerate(participant_ids):
                     choice = random.choice(['A', 'B'])
+                    choices.append(choice)
+                    ptype = participant_types[idx]
+
                     with get_db() as conn:
-                        conn.execute(text("""
+                        result = conn.execute(text("""
                             INSERT INTO decisions (session_id, participant_id, round_number, choice, created_at)
                             VALUES (:sid, :pid, :r, :choice, :created_at)
+                            RETURNING id
                         """), {
                             "sid": session_id,
                             "pid": pid,
@@ -623,10 +643,44 @@ def admin_stress_test():
                             "choice": choice,
                             "created_at": iso_utc(utc_now())
                         })
+                        decision_id = result.scalar()
+                        decision_ids.append((decision_id, pid, choice, ptype))
                         conn.commit()
 
+                # Calculate costs and payouts for this round
+                total_A = sum(1 for c in choices if c == 'A')
+                with get_db() as conn:
+                    for did, pid, choice, ptype in decision_ids:
+                        if choice == "A":
+                            cost = a_cost_for(ptype)
+                            others_A = max(0, total_A - 1)
+                        else:
+                            others_A = total_A
+                            cost = b_cost_adapt(ptype, others_A, N)
+
+                        payout = max(M - float(cost), 0)
+
+                        conn.execute(text("""
+                            UPDATE decisions
+                            SET total_cost = :cost, payout = :payout, others_A = :others_A
+                            WHERE id = :did
+                        """), {
+                            "cost": cost,
+                            "payout": payout,
+                            "others_A": others_A,
+                            "did": did
+                        })
+
+                        conn.execute(text("""
+                            UPDATE participants
+                            SET balance = :payout, current_round = :r
+                            WHERE id = :pid
+                        """), {"payout": payout, "pid": pid, "r": round_num})
+
+                    conn.commit()
+
                 # All players ready
-                time.sleep(random.uniform(0.1, 0.3))
+                time.sleep(random.uniform(0.2, 0.4))
                 with get_db() as conn:
                     conn.execute(text("""
                         UPDATE participants
@@ -635,7 +689,7 @@ def admin_stress_test():
                     """), {"sid": session_id})
                     conn.commit()
 
-                log(f"Session {session_num}: Runde {round_num}/5 abgeschlossen", 'info')
+                log(f"Session {session_num}: Runde {round_num}/20 abgeschlossen (A:{total_A}, B:{N-total_A})", 'info')
 
             # Mark session as done
             with get_db() as conn:
@@ -643,6 +697,9 @@ def admin_stress_test():
                     UPDATE sessions SET status = 'done' WHERE id = :sid
                 """), {"sid": session_id})
                 conn.commit()
+
+            # Emit game_finished event
+            socketio.emit('game_finished', {'session_id': session_id}, room='admin_room')
 
             log(f"Session {session_num}: ✅ Komplett abgeschlossen!", 'success')
 
