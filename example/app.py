@@ -543,12 +543,8 @@ def admin_stress_test():
         """Add log message to queue."""
         progress_queue.put({'type': 'log', 'message': message, 'level': level})
 
-    # Capture base_url in request context BEFORE starting background thread
-    base_url = request.url_root.rstrip('/')
-
     def simulate_session(session_num):
         """Simulate one complete session with 6 players."""
-        import requests
         import time
         import random
 
@@ -599,17 +595,29 @@ def admin_stress_test():
             socketio.emit('session_created', {'session_id': session_id}, room='admin_room')
             time.sleep(0.5)  # Brief pause to see in "Offene Sessions"
 
-            # Simulate 6 players joining
-            for i, code in enumerate(participant_codes):
+            # Simulate 6 players joining (directly in database)
+            for i, pid in enumerate(participant_ids):
                 time.sleep(random.uniform(0.1, 0.3))  # Realistic delay
 
-                # Join via HTTP request
-                resp = requests.post(f"{base_url}/join",
-                                    data={'code': code, 'browser_token': str(uuid.uuid4())},
-                                    allow_redirects=False)
+                # Mark player as joined
+                with get_db() as conn:
+                    conn.execute(text("""
+                        UPDATE participants
+                        SET joined = 1, join_number = :join_num
+                        WHERE id = :pid
+                    """), {"pid": pid, "join_num": i + 1})
+                    conn.commit()
 
-                if resp.status_code not in [200, 302]:
-                    log(f"Session {session_num}: Player {i+1} join failed", 'warning')
+                # Emit lobby update for this join
+                socketio.emit('lobby_update', {'session_id': session_id}, room='admin_room')
+                socketio.emit('lobby_update', {'session_id': session_id}, room=f'session_{session_id}')
+
+            # All players joined - start the game
+            with get_db() as conn:
+                conn.execute(text("""
+                    UPDATE sessions SET status = 'playing' WHERE id = :sid
+                """), {"sid": session_id})
+                conn.commit()
 
             log(f"Session {session_num}: Alle Spieler gejoint → Spiel gestartet", 'success')
 
