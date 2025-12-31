@@ -597,14 +597,22 @@ def admin_stress_test():
             cookies = http_session.cookies.get_dict()
             cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
 
-            # Set up event listener for 'all_ready' - just like real browsers do!
+            # Set up event listeners - EXACTLY like real browsers do!
+            round_status_event = threading.Event()
             all_ready_event = threading.Event()
+
+            @sio.on('round_status')
+            def on_round_status(data):
+                """Called when all players have made their choice in /round"""
+                if data.get('ready'):
+                    print(f"[STRESS] S{session_num}P{player_id}: 🎯 'round_status' ready=true (all chose) → navigate to /reveal", flush=True)
+                    round_status_event.set()  # Signal: alle haben gewählt, zu /reveal!
 
             @sio.on('all_ready')
             def on_all_ready(data):
-                """Called when server says all players are ready - REALISTIC like browser!"""
-                print(f"[STRESS] S{session_num}P{player_id}: 🎯 Received 'all_ready' event for round {data.get('next_round')}", flush=True)
-                all_ready_event.set()  # Signal that we can start next round
+                """Called when all players clicked 'Bereit' in /reveal"""
+                print(f"[STRESS] S{session_num}P{player_id}: 🎯 'all_ready' for round {data.get('next_round')} → navigate to /round", flush=True)
+                all_ready_event.set()  # Signal: alle bereit, zur nächsten Runde!
 
             try:
                 print(f"[STRESS] S{session_num}P{player_id}: Connecting Socket.IO...", flush=True)
@@ -624,14 +632,27 @@ def admin_stress_test():
             print(f"[STRESS] S{session_num}P{player_id}: Starting 20 rounds!", flush=True)
             log(f"S{session_num}P{player_id}: Starte 20 Runden!", 'info')
 
-            # Play 20 rounds
+            # Play 20 rounds - REALISTIC browser simulation!
             for round_num in range(1, 21):
-                time.sleep(random.uniform(1, 2.5))  # Realistic thinking time
+                # 1. GET /round (simulate page load)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} GET /round (page load)", flush=True)
+                round_resp = http_session.get(f"{base_url}/round", timeout=10)
+                if round_resp.status_code != 200:
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} GET /round FAILED: {round_resp.status_code}", flush=True)
+                    break
 
-                # Make choice via real HTTP POST
+                # Emit join_round event (like browser does on page load)
+                sio.emit('join_round', {})
+
+                # 2. Think about choice (realistic user behavior)
+                time.sleep(random.uniform(1, 2.5))
+
+                # 3. POST /choose (click button A or B)
                 choice = random.choice(['A', 'B'])
                 print(f"[STRESS] S{session_num}P{player_id}: R{round_num} POST /choose choice={choice}", flush=True)
                 log(f"S{session_num}P{player_id}: R{round_num} POST /choose choice={choice}", 'info')
+
+                round_status_event.clear()  # Reset event
                 resp = http_session.post(
                     f"{base_url}/choose",
                     json={'choice': choice},
@@ -639,26 +660,43 @@ def admin_stress_test():
                 )
 
                 print(f"[STRESS] S{session_num}P{player_id}: R{round_num} /choose status={resp.status_code}", flush=True)
-                log(f"S{session_num}P{player_id}: R{round_num} /choose status={resp.status_code}", 'info')
 
                 if resp.status_code != 200:
-                    print(f"[STRESS] S{session_num}P{player_id}: Choice FAILED in round {round_num} - response: {resp.text}", flush=True)
+                    print(f"[STRESS] S{session_num}P{player_id}: Choice FAILED in round {round_num}", flush=True)
                     log(f"S{session_num}P{player_id}: Choice fehlgeschlagen in Runde {round_num}", 'warning')
                     break
 
-                # Wait a bit, then mark ready
+                # 4. Wait for 'round_status' event (all players chose) - REALISTIC!
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⏳ Waiting for 'round_status' (all chose)...", flush=True)
+                if not round_status_event.wait(timeout=15):
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for round_status!", flush=True)
+                    break
+
+                # 5. GET /reveal (browser auto-navigates after round_status.ready)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} GET /reveal (auto-navigation)", flush=True)
+                reveal_resp = http_session.get(f"{base_url}/reveal", timeout=10)
+                if reveal_resp.status_code != 200:
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} GET /reveal FAILED: {reveal_resp.status_code}", flush=True)
+                    break
+
+                # Emit join_reveal event (like browser does on /reveal page load)
+                sio.emit('join_reveal', {})
+
+                # 6. Wait a bit, then click "Bereit" button
                 time.sleep(random.uniform(0.5, 1.0))
+
+                all_ready_event.clear()  # Reset event
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} POST /confirm_ready", flush=True)
                 ready_resp = http_session.post(f"{base_url}/confirm_ready", timeout=10)
                 print(f"[STRESS] S{session_num}P{player_id}: R{round_num} /confirm_ready status={ready_resp.status_code}", flush=True)
 
-                # REALISTIC: Wait for server's 'all_ready' event - just like real browsers!
-                # Real players don't blindly sleep - they wait for Socket.IO event!
-                all_ready_event.clear()  # Reset event for this round
-                if all_ready_event.wait(timeout=15):  # Wait up to 15 seconds for event
-                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ✅ All ready! Starting next round...", flush=True)
-                else:
-                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for all_ready event!", flush=True)
-                    log(f"S{session_num}P{player_id}: Timeout bei Runde {round_num}", 'warning')
+                # 7. Wait for 'all_ready' event (all clicked Bereit) - REALISTIC!
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⏳ Waiting for 'all_ready' (all ready)...", flush=True)
+                if not all_ready_event.wait(timeout=15):
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for all_ready!", flush=True)
+                    break
+
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ✅ Round complete! (Browser would navigate to /round)", flush=True)
 
             log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
 
