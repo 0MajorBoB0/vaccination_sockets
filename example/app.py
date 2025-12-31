@@ -563,26 +563,32 @@ def admin_stress_test():
             # Generate browser token
             browser_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
 
-            # Join via real HTTP POST (follow redirect to establish session)
+            # Join via real HTTP POST (DON'T follow redirects - session data isn't saved until request ends!)
             print(f"[STRESS] S{session_num}P{player_id}: POST to {base_url}/join...", flush=True)
             log(f"S{session_num}P{player_id}: POST zu {base_url}/join...", 'info')
             resp = http_session.post(
                 f"{base_url}/join",
                 data={'code': code, 'browser_token': browser_token},
-                allow_redirects=True,  # Follow redirect to establish session
+                allow_redirects=False,  # Don't follow - session data not saved yet!
                 timeout=10
             )
 
-            print(f"[STRESS] S{session_num}P{player_id}: Join response status={resp.status_code} URL={resp.url}", flush=True)
+            print(f"[STRESS] S{session_num}P{player_id}: Join response status={resp.status_code}", flush=True)
             print(f"[STRESS] S{session_num}P{player_id}: Cookies: {http_session.cookies.get_dict()}", flush=True)
             log(f"S{session_num}P{player_id}: Join response status={resp.status_code}", 'info')
 
-            if resp.status_code != 200:
-                print(f"[STRESS] S{session_num}P{player_id}: Join FAILED ({resp.status_code})", flush=True)
+            # Check for 302 redirect (join successful)
+            if resp.status_code != 302:
+                print(f"[STRESS] S{session_num}P{player_id}: Join FAILED - expected 302, got {resp.status_code}", flush=True)
                 log(f"S{session_num}P{player_id}: Join fehlgeschlagen ({resp.status_code})", 'warning')
                 return
 
-            print(f"[STRESS] S{session_num}P{player_id}: Joined successfully!", flush=True)
+            # Check we got session cookie
+            if 'session' not in http_session.cookies:
+                print(f"[STRESS] S{session_num}P{player_id}: No session cookie!", flush=True)
+                return
+
+            print(f"[STRESS] S{session_num}P{player_id}: Joined successfully! Session cookie received.", flush=True)
             log(f"S{session_num}P{player_id}: Gejoint!", 'success')
 
             # Connect Socket.IO with session cookies
