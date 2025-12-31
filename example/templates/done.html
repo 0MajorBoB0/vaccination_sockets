@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block content %}
   <div class="card">
-    <h2>Danke für die Teilnahme!</h2>
-    <p>Dein Code: <span class="badge mono">{{ participant.code }}</span></p>
-    <p>Dein Endguthaben: <strong>{{ (participant.balance or 0)|round(2) }} ECU</strong></p>
-    <p>Das Spiel ist beendet. Du kannst das Fenster schließen.</p>
+    <h2>Danke für Ihre Teilnahme!</h2>
+    <p>Ihr Code: <span class="badge mono">{{ participant.code }}</span></p>
+    <p>Ihr Endguthaben: <strong>{{ (participant.balance or 0)|round(2) }} ECU</strong></p>
+    <p>Das Spiel ist beendet. Sie können das Fenster schließen.</p>
   </div>
 {% endblock %}
