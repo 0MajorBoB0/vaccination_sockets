@@ -638,7 +638,12 @@ def admin_stress_test():
 
                 # Wait a bit, then mark ready
                 time.sleep(random.uniform(0.5, 1.0))
-                http_session.post(f"{base_url}/confirm_ready", timeout=10)
+                ready_resp = http_session.post(f"{base_url}/confirm_ready", timeout=10)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} /confirm_ready status={ready_resp.status_code}", flush=True)
+
+                # Wait for server to process all players and start next round
+                # This gives time for: all players to choose, all to click ready, server to emit all_ready
+                time.sleep(2.0 + random.uniform(0, 1.0))
 
             log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
 
