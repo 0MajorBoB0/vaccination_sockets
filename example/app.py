@@ -552,6 +552,7 @@ def admin_stress_test():
         """Simulate one real player with HTTP session and Socket.IO."""
         import time
         import random
+        import threading
 
         try:
             print(f"[STRESS] S{session_num}P{player_id}: Thread started with code {code}", flush=True)
@@ -595,6 +596,15 @@ def admin_stress_test():
             sio = sio_client.Client(logger=False, engineio_logger=False)
             cookies = http_session.cookies.get_dict()
             cookie_string = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+
+            # Set up event listener for 'all_ready' - just like real browsers do!
+            all_ready_event = threading.Event()
+
+            @sio.on('all_ready')
+            def on_all_ready(data):
+                """Called when server says all players are ready - REALISTIC like browser!"""
+                print(f"[STRESS] S{session_num}P{player_id}: 🎯 Received 'all_ready' event for round {data.get('next_round')}", flush=True)
+                all_ready_event.set()  # Signal that we can start next round
 
             try:
                 print(f"[STRESS] S{session_num}P{player_id}: Connecting Socket.IO...", flush=True)
@@ -641,10 +651,14 @@ def admin_stress_test():
                 ready_resp = http_session.post(f"{base_url}/confirm_ready", timeout=10)
                 print(f"[STRESS] S{session_num}P{player_id}: R{round_num} /confirm_ready status={ready_resp.status_code}", flush=True)
 
-                # Wait for server to process all players and start next round
-                # This gives time for: all players to choose, all to click ready, server to emit all_ready
-                # With 6 players, need enough time for slowest player (2.5s think + 1s wait = 3.5s) + processing buffer
-                time.sleep(8.0 + random.uniform(0, 4.0))
+                # REALISTIC: Wait for server's 'all_ready' event - just like real browsers!
+                # Real players don't blindly sleep - they wait for Socket.IO event!
+                all_ready_event.clear()  # Reset event for this round
+                if all_ready_event.wait(timeout=15):  # Wait up to 15 seconds for event
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ✅ All ready! Starting next round...", flush=True)
+                else:
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for all_ready event!", flush=True)
+                    log(f"S{session_num}P{player_id}: Timeout bei Runde {round_num}", 'warning')
 
             log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
 
