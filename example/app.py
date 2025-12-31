@@ -386,7 +386,11 @@ def admin_dashboard():
                 "created_at": iso_utc(utc_now())
             })
 
-            # Create participants with unique codes
+            # Create participants with unique codes and randomized player types
+            # Shuffle player types 1-6 to ensure each type appears exactly once
+            player_types = list(range(1, 7))  # [1, 2, 3, 4, 5, 6]
+            random.shuffle(player_types)
+
             for i in range(group_size):
                 participant_id = str(uuid.uuid4())
 
@@ -401,14 +405,18 @@ def admin_dashboard():
                     # Should never happen with 6-char codes (32^6 = ~1B possibilities)
                     raise Exception(f"Failed to generate unique participant code after 20 attempts")
 
+                # Assign player type - each type 1-6 appears exactly once
+                ptype = player_types[i] if i < len(player_types) else ((i % 6) + 1)
+
                 conn.execute(text("""
                     INSERT INTO participants
-                    (id, session_id, code, joined, join_number, current_round, balance, completed, created_at, ready_for_next)
-                    VALUES (:id, :session_id, :code, 0, NULL, 1, :balance, 0, :created_at, 0)
+                    (id, session_id, code, ptype, joined, join_number, current_round, balance, completed, created_at, ready_for_next)
+                    VALUES (:id, :session_id, :code, :ptype, 0, NULL, 1, :balance, 0, :created_at, 0)
                 """), {
                     "id": participant_id,
                     "session_id": session_id,
                     "code": code,
+                    "ptype": ptype,
                     "balance": starting_balance,
                     "created_at": iso_utc(utc_now())
                 })
@@ -740,12 +748,16 @@ def admin_stress_test():
                     "created_at": iso_utc(utc_now())
                 })
 
-                # Create 6 participants with random types
+                # Create 6 participants with randomized player types
+                # Shuffle player types 1-6 to ensure each type appears exactly once
+                player_types = list(range(1, 7))  # [1, 2, 3, 4, 5, 6]
+                random.shuffle(player_types)
+
                 participant_codes = []
                 for i in range(6):
                     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                     participant_id = str(uuid.uuid4())
-                    ptype = random.choice([1, 2, 3, 4, 5])  # Random player type
+                    ptype = player_types[i]  # Each type 1-6 appears exactly once
                     participant_codes.append(code)
 
                     conn.execute(text("""
@@ -1038,7 +1050,7 @@ def admin_export_session_xlsx():
 
         # Headers for Decisions
         decision_headers = ["round", "player_#", "code", "ptype", "choice",
-                           "a_cost", "b_cost", "total_cost", "payout", "created_at", "others"]
+                           "a_cost", "b_cost", "total_cost", "payout", "created_at"]
         ws_decisions.append(decision_headers)
 
         # Style headers
@@ -1060,8 +1072,7 @@ def admin_export_session_xlsx():
                 float(row[6]) if row[6] is not None else None,  # b_cost
                 float(row[7]) if row[7] is not None else None,  # total_cost
                 float(row[8]) if row[8] is not None else None,  # payout
-                str(row[9]) if row[9] else "",  # created_at
-                row[10] if row[10] is not None else ""  # others_A
+                str(row[9]) if row[9] else ""  # created_at
             ]
             ws_decisions.append(row_data)
 
