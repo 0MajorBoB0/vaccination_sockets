@@ -1161,8 +1161,10 @@ def admin_export_session_xlsx():
         # ============ TYPE COST TABLE SHEET ============
         ws_type_cost = wb.create_sheet("TypeCostTable")
 
-        # Headers for TypeCostTable
-        type_cost_headers = ["Typ", "A_cost", "B_cost_0", "B_cost_1", "B_cost_2", "B_cost_3", "B_cost_4"]
+        # Headers for TypeCostTable (following Chef's notation)
+        # 1xA = 1 other player chose A, 2xA = 2 others chose A, etc.
+        # Bei A = Cost when choosing A (independent of others)
+        type_cost_headers = ["Typ", "A_cost (Bei A)", "B_cost (1xA)", "B_cost (2xA)", "B_cost (3xA)", "B_cost (4xA)", "B_cost (5xA)"]
         ws_type_cost.append(type_cost_headers)
 
         # Style headers
