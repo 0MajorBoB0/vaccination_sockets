@@ -1536,57 +1536,73 @@ def choose():
     if choice not in ("A", "B"):
         return ("Invalid choice", 400)
 
-    with get_db() as conn:
-        # Get participant's current round
-        p_result = conn.execute(text("""
-            SELECT current_round
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
+    try:
+        with get_db() as conn:
+            # Get participant's current round
+            p_result = conn.execute(text("""
+                SELECT current_round
+                FROM participants
+                WHERE id = :pid
+            """), {"pid": participant_id})
 
-        participant = p_result.fetchone()
+            participant = p_result.fetchone()
 
-        if not participant:
-            return ("Participant not found", 404)
+            if not participant:
+                return ("Participant not found", 404)
 
-        r = participant[0] or 1
+            r = participant[0] or 1
 
-        # Check if already decided
-        already = conn.execute(text("""
-            SELECT 1 FROM decisions
-            WHERE participant_id = :pid AND round_number = :r
-        """), {"pid": participant_id, "r": r}).fetchone()
+            # Check if already decided
+            already = conn.execute(text("""
+                SELECT 1 FROM decisions
+                WHERE participant_id = :pid AND round_number = :r
+            """), {"pid": participant_id, "r": r}).fetchone()
 
-        if already:
-            return ({"ok": True}, 200)
+            if already:
+                return ({"ok": True}, 200)
 
-        # Insert decision
-        conn.execute(text("""
-            INSERT INTO decisions (session_id, participant_id, round_number, choice, created_at)
-            VALUES (:sid, :pid, :r, :choice, :created_at)
-        """), {
-            "sid": session_id,
-            "pid": participant_id,
-            "r": r,
-            "choice": choice,
-            "created_at": iso_utc(utc_now())
-        })
+            # Insert decision (handle race condition with INSERT IGNORE)
+            try:
+                conn.execute(text("""
+                    INSERT INTO decisions (session_id, participant_id, round_number, choice, created_at)
+                    VALUES (:sid, :pid, :r, :choice, :created_at)
+                """), {
+                    "sid": session_id,
+                    "pid": participant_id,
+                    "r": r,
+                    "choice": choice,
+                    "created_at": iso_utc(utc_now())
+                })
+                conn.commit()
+            except Exception as insert_err:
+                # Handle duplicate key error (race condition)
+                if "Duplicate entry" in str(insert_err) or "unique constraint" in str(insert_err).lower():
+                    print(f"[WARN] Duplicate decision attempt: pid={participant_id}, round={r}", flush=True)
+                    return ({"ok": True}, 200)
+                else:
+                    # Re-raise other errors
+                    raise
 
-        conn.commit()
+            # Notify all participants in this round via Socket.IO
+            socketio.emit('round_decision', {
+                'round': r,
+                'decided': True
+            }, room=f"round_{session_id}_{r}")
 
-        # Notify all participants in this round via Socket.IO
-        socketio.emit('round_decision', {
-            'round': r,
-            'decided': True
-        }, room=f"round_{session_id}_{r}")
+            # Also notify admin room for live updates in detail view
+            socketio.emit('round_decision', {
+                'session_id': session_id,
+                'round': r
+            }, room='admin_room')
 
-        # Also notify admin room for live updates in detail view
-        socketio.emit('round_decision', {
-            'session_id': session_id,
-            'round': r
-        }, room='admin_room')
+        return ({"ok": True}, 200)
 
-    return ({"ok": True}, 200)
+    except Exception as e:
+        # Log the error for debugging
+        print(f"[ERROR] /choose failed: pid={participant_id}, sid={session_id}, error={str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return (f"Internal error: {str(e)}", 500)
 
 
 @app.route("/wait")
@@ -1792,95 +1808,103 @@ def confirm_ready():
     if not participant_id or not session_id:
         return ("No participant", 400)
 
-    with get_db() as conn:
-        p_result = conn.execute(text("""
-            SELECT current_round
-            FROM participants
-            WHERE id = :pid
-        """), {"pid": participant_id})
+    try:
+        with get_db() as conn:
+            p_result = conn.execute(text("""
+                SELECT current_round
+                FROM participants
+                WHERE id = :pid
+            """), {"pid": participant_id})
 
-        participant = p_result.fetchone()
+            participant = p_result.fetchone()
 
-        if not participant:
-            return ("Participant not found", 404)
+            if not participant:
+                return ("Participant not found", 404)
 
-        current_round = participant[0] or 1
+            current_round = participant[0] or 1
 
-        conn.execute(text("""
-            UPDATE participants
-            SET ready_for_next = 1
-            WHERE id = :pid
-        """), {"pid": participant_id})
+            conn.execute(text("""
+                UPDATE participants
+                SET ready_for_next = 1
+                WHERE id = :pid
+            """), {"pid": participant_id})
 
-        conn.commit()
+            conn.commit()
 
-        socketio.emit('player_ready', {}, room=f"session_{session_id}")
+            socketio.emit('player_ready', {}, room=f"session_{session_id}")
 
-        # Also notify admin room
-        socketio.emit('player_ready', {'session_id': session_id}, room='admin_room')
+            # Also notify admin room
+            socketio.emit('player_ready', {'session_id': session_id}, room='admin_room')
 
-        ready_count_result = conn.execute(text("""
-            SELECT COUNT(*) as c
-            FROM participants
-            WHERE session_id = :sid AND ready_for_next = 1
-        """), {"sid": session_id})
+            ready_count_result = conn.execute(text("""
+                SELECT COUNT(*) as c
+                FROM participants
+                WHERE session_id = :sid AND ready_for_next = 1
+            """), {"sid": session_id})
 
-        ready_count = ready_count_result.fetchone()[0]
+            ready_count = ready_count_result.fetchone()[0]
 
-        group_size_result = conn.execute(text("""
-            SELECT group_size
-            FROM sessions
-            WHERE id = :sid
-        """), {"sid": session_id})
-
-        group_size = group_size_result.fetchone()[0]
-
-        if ready_count >= group_size:
-            s_result = conn.execute(text("""
-                SELECT rounds
+            group_size_result = conn.execute(text("""
+                SELECT group_size
                 FROM sessions
                 WHERE id = :sid
             """), {"sid": session_id})
 
-            total_rounds = s_result.fetchone()[0]
+            group_size = group_size_result.fetchone()[0]
 
-            if current_round >= total_rounds:
-                conn.execute(text("""
-                    UPDATE sessions
-                    SET status = 'done'
+            if ready_count >= group_size:
+                s_result = conn.execute(text("""
+                    SELECT rounds
+                    FROM sessions
                     WHERE id = :sid
                 """), {"sid": session_id})
 
-                conn.execute(text("""
-                    UPDATE participants
-                    SET ready_for_next = 0
-                    WHERE session_id = :sid
-                """), {"sid": session_id})
+                total_rounds = s_result.fetchone()[0]
 
-                conn.commit()
+                if current_round >= total_rounds:
+                    conn.execute(text("""
+                        UPDATE sessions
+                        SET status = 'done'
+                        WHERE id = :sid
+                    """), {"sid": session_id})
 
-                socketio.emit('game_finished', {}, room=f"session_{session_id}")
-                socketio.emit('game_finished', {'session_id': session_id}, room='admin_room')
-            else:
-                conn.execute(text("""
-                    UPDATE participants
-                    SET current_round = current_round + 1, ready_for_next = 0
-                    WHERE session_id = :sid
-                """), {"sid": session_id})
+                    conn.execute(text("""
+                        UPDATE participants
+                        SET ready_for_next = 0
+                        WHERE session_id = :sid
+                    """), {"sid": session_id})
 
-                conn.commit()
+                    conn.commit()
 
-                socketio.emit('all_ready', {
-                    'next_round': current_round + 1
-                }, room=f"session_{session_id}")
+                    socketio.emit('game_finished', {}, room=f"session_{session_id}")
+                    socketio.emit('game_finished', {'session_id': session_id}, room='admin_room')
+                else:
+                    conn.execute(text("""
+                        UPDATE participants
+                        SET current_round = current_round + 1, ready_for_next = 0
+                        WHERE session_id = :sid
+                    """), {"sid": session_id})
 
-                # Also notify admin room
-                socketio.emit('all_ready', {
-                    'session_id': session_id,
-                    'next_round': current_round + 1
-                }, room='admin_room')
+                    conn.commit()
 
-    return ({"ok": True}, 200)
+                    socketio.emit('all_ready', {
+                        'next_round': current_round + 1
+                    }, room=f"session_{session_id}")
+
+                    # Also notify admin room
+                    socketio.emit('all_ready', {
+                        'session_id': session_id,
+                        'next_round': current_round + 1
+                    }, room='admin_room')
+
+        return ({"ok": True}, 200)
+
+    except Exception as e:
+        # Log the error for debugging
+        print(f"[ERROR] /confirm_ready failed: pid={participant_id}, sid={session_id}, error={str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return (f"Internal error: {str(e)}", 500)
 
 
 @app.route("/done")
