@@ -1733,21 +1733,32 @@ def finalize_round(session_id, round_number):
             choice = row[2]
             ptype = row[3] or 1
 
-            if choice == "A":
-                cost = a_cost_for(ptype)
-                others_A = max(0, total_A - 1)
-            else:
-                others_A = total_A
-                cost = b_cost_adapt(ptype, others_A, N)
+            # Calculate BOTH costs for transparency in Excel export
+            a_cost_value = a_cost_for(ptype)
 
-            payout = max(M - float(cost), 0)
+            if choice == "A":
+                # Player chose A: actual cost is a_cost
+                # Calculate what B would have cost (with one less A)
+                others_A = max(0, total_A - 1)
+                b_cost_value = b_cost_adapt(ptype, others_A, N)
+                actual_cost = a_cost_value
+            else:
+                # Player chose B: actual cost is b_cost
+                others_A = total_A
+                b_cost_value = b_cost_adapt(ptype, others_A, N)
+                actual_cost = b_cost_value
+
+            payout = max(M - float(actual_cost), 0)
 
             conn.execute(text("""
                 UPDATE decisions
-                SET total_cost = :cost, payout = :payout, others_A = :others_A
+                SET a_cost = :a_cost, b_cost = :b_cost, total_cost = :total_cost,
+                    payout = :payout, others_A = :others_A
                 WHERE id = :did AND total_cost IS NULL
             """), {
-                "cost": cost,
+                "a_cost": a_cost_value,
+                "b_cost": b_cost_value,
+                "total_cost": actual_cost,
                 "payout": payout,
                 "others_A": others_A,
                 "did": did
