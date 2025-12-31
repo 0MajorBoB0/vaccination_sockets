@@ -643,7 +643,8 @@ def admin_stress_test():
 
                 # Wait for server to process all players and start next round
                 # This gives time for: all players to choose, all to click ready, server to emit all_ready
-                time.sleep(2.0 + random.uniform(0, 1.0))
+                # With 6 players, need enough time for slowest player (2.5s think + 1s wait = 3.5s) + processing buffer
+                time.sleep(8.0 + random.uniform(0, 4.0))
 
             log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
 
