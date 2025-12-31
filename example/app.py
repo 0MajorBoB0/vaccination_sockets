@@ -601,11 +601,18 @@ def admin_stress_test():
             round_status_event = threading.Event()
             all_ready_event = threading.Event()
 
+            @sio.on('round_decision')
+            def on_round_decision(data):
+                """Someone made a choice - re-emit join_round to get updated status (like browser does!)"""
+                print(f"[STRESS] S{session_num}P{player_id}: 📢 'round_decision' received → re-emit 'join_round'", flush=True)
+                sio.emit('join_round', {})  # Re-emit to get updated round_status!
+
             @sio.on('round_status')
             def on_round_status(data):
                 """Called when all players have made their choice in /round"""
+                print(f"[STRESS] S{session_num}P{player_id}: 📊 'round_status' decided={data.get('decided')}/{data.get('group_size')} ready={data.get('ready')}", flush=True)
                 if data.get('ready'):
-                    print(f"[STRESS] S{session_num}P{player_id}: 🎯 'round_status' ready=true (all chose) → navigate to /reveal", flush=True)
+                    print(f"[STRESS] S{session_num}P{player_id}: 🎯 All chose! → navigate to /reveal", flush=True)
                     round_status_event.set()  # Signal: alle haben gewählt, zu /reveal!
 
             @sio.on('all_ready')
