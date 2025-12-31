@@ -390,12 +390,16 @@ def admin_dashboard():
             for i in range(group_size):
                 participant_id = str(uuid.uuid4())
 
-                # Generate unique code
-                while True:
+                # Generate unique code (max 20 attempts to prevent infinite loops)
+                code = None
+                for attempt in range(20):
                     code = create_code(6)
                     existing = conn.execute(text("SELECT 1 FROM participants WHERE code = :code"), {"code": code}).fetchone()
                     if not existing:
                         break
+                else:
+                    # Should never happen with 6-char codes (32^6 = ~1B possibilities)
+                    raise Exception(f"Failed to generate unique participant code after 20 attempts")
 
                 conn.execute(text("""
                     INSERT INTO participants

@@ -987,10 +987,15 @@ def admin():
 
         for i in range(group_size):
             pid = str(uuid.uuid4())
-            while True:
+            # Generate unique code (max 20 attempts to prevent infinite loops)
+            code = None
+            for attempt in range(20):
                 code = create_code(6)
                 if not con.execute("SELECT 1 FROM participants WHERE code=%s", (code,)).fetchone():
                     break
+            else:
+                # Should never happen with 6-char codes (32^6 = ~1B possibilities)
+                raise Exception(f"Failed to generate unique participant code after 20 attempts")
             ptype = (i % 6) + 1
             theta = 0.0
             lambd = 0.0
