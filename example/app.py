@@ -604,21 +604,21 @@ def admin_stress_test():
             @sio.on('round_decision')
             def on_round_decision(data):
                 """Someone made a choice - re-emit join_round to get updated status (like browser does!)"""
-                print(f"[STRESS] S{session_num}P{player_id}: 📢 'round_decision' received → re-emit 'join_round'", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: 'round_decision' received, re-emit 'join_round'", flush=True)
                 sio.emit('join_round', {})  # Re-emit to get updated round_status!
 
             @sio.on('round_status')
             def on_round_status(data):
                 """Called when all players have made their choice in /round"""
-                print(f"[STRESS] S{session_num}P{player_id}: 📊 'round_status' decided={data.get('decided')}/{data.get('group_size')} ready={data.get('ready')}", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: 'round_status' decided={data.get('decided')}/{data.get('group_size')} ready={data.get('ready')}", flush=True)
                 if data.get('ready'):
-                    print(f"[STRESS] S{session_num}P{player_id}: 🎯 All chose! → navigate to /reveal", flush=True)
+                    print(f"[STRESS] S{session_num}P{player_id}: All chose, navigate to /reveal", flush=True)
                     round_status_event.set()  # Signal: alle haben gewählt, zu /reveal!
 
             @sio.on('all_ready')
             def on_all_ready(data):
                 """Called when all players clicked 'Bereit' in /reveal"""
-                print(f"[STRESS] S{session_num}P{player_id}: 🎯 'all_ready' for round {data.get('next_round')} → navigate to /round", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: 'all_ready' for round {data.get('next_round')}, navigate to /round", flush=True)
                 all_ready_event.set()  # Signal: alle bereit, zur nächsten Runde!
 
             try:
@@ -674,9 +674,9 @@ def admin_stress_test():
                     break
 
                 # 4. Wait for 'round_status' event (all players chose) - REALISTIC!
-                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⏳ Waiting for 'round_status' (all chose)...", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} Waiting for 'round_status' (all chose)...", flush=True)
                 if not round_status_event.wait(timeout=15):
-                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for round_status!", flush=True)
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} Timeout waiting for round_status!", flush=True)
                     break
 
                 # 5. GET /reveal (browser auto-navigates after round_status.ready)
@@ -698,14 +698,14 @@ def admin_stress_test():
                 print(f"[STRESS] S{session_num}P{player_id}: R{round_num} /confirm_ready status={ready_resp.status_code}", flush=True)
 
                 # 7. Wait for 'all_ready' event (all clicked Bereit) - REALISTIC!
-                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⏳ Waiting for 'all_ready' (all ready)...", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} Waiting for 'all_ready' (all ready)...", flush=True)
                 if not all_ready_event.wait(timeout=15):
-                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ⚠️ Timeout waiting for all_ready!", flush=True)
+                    print(f"[STRESS] S{session_num}P{player_id}: R{round_num} Timeout waiting for all_ready!", flush=True)
                     break
 
-                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} ✅ Round complete! (Browser would navigate to /round)", flush=True)
+                print(f"[STRESS] S{session_num}P{player_id}: R{round_num} Round complete (Browser would navigate to /round)", flush=True)
 
-            log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt! ✅", 'success')
+            log(f"S{session_num}P{player_id}: Alle 20 Runden gespielt!", 'success')
 
             # Cleanup
             if sio.connected:
@@ -804,10 +804,10 @@ def admin_stress_test():
             for t in player_threads:
                 t.join(timeout=300)  # 5 min max per session
 
-            log(f"Session {session_num}: ✅ Alle Spieler fertig!", 'success')
+            log(f"Session {session_num}: Alle Spieler fertig!", 'success')
 
         except Exception as e:
-            log(f"Session {session_num}: ❌ Fehler - {str(e)}", 'error')
+            log(f"Session {session_num}: Fehler - {str(e)}", 'error')
 
     def run_stress_test():
         """Run all sessions in parallel."""
