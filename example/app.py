@@ -545,8 +545,8 @@ def admin_stress_test():
         """Add log message to queue."""
         progress_queue.put({'type': 'log', 'message': message, 'level': level})
 
-    # Capture base URL for HTTP requests
-    base_url = request.url_root.rstrip('/')
+    # Capture base URL for HTTP requests - use HTTPS because SESSION_COOKIE_SECURE = True
+    base_url = request.url_root.rstrip('/').replace('http://', 'https://')
 
     def simulate_player(player_id, code, session_num):
         """Simulate one real player with HTTP session and Socket.IO."""
