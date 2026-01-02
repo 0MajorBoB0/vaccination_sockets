@@ -28,7 +28,7 @@ import time
 async_mode = 'eventlet'
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
+app.config['SECRET_KEY'] = 'bw63KXv6p1RKcJToHs4kcBEO2oExFYnA'
 
 # Server-side session configuration (more reliable than cookie-based)
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -52,7 +52,7 @@ thread = None
 thread_lock = Lock()
 
 # STEP 4: Admin configuration
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "GameTheoryMachtSpaß2025!#")
 
 # STEP 4: Admin helper functions
 def require_admin():
