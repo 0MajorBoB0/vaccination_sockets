@@ -1436,10 +1436,6 @@ def finalize_round(session_id, round_number):
         N = session_dict["group_size"]
         M = float(session_dict["starting_balance"] or 500)
 
-        # Pre-calculate all costs and payouts (batch processing)
-        decision_updates = []
-        participant_updates = []
-
         for row in rows:
             did = row[0]
             pid = row[1]
@@ -1463,7 +1459,12 @@ def finalize_round(session_id, round_number):
 
             payout = max(M - float(actual_cost), 0)
 
-            decision_updates.append({
+            conn.execute(text("""
+                UPDATE decisions
+                SET a_cost = :a_cost, b_cost = :b_cost, total_cost = :total_cost,
+                    payout = :payout, others_A = :others_A
+                WHERE id = :did AND total_cost IS NULL
+            """), {
                 "a_cost": a_cost_value,
                 "b_cost": b_cost_value,
                 "total_cost": actual_cost,
@@ -1472,82 +1473,11 @@ def finalize_round(session_id, round_number):
                 "did": did
             })
 
-            participant_updates.append({
-                "payout": payout,
-                "pid": pid
-            })
-
-        # Batch update decisions using single query with CASE statements (6x faster!)
-        if decision_updates:
-            # Build CASE statements for each field
-            decision_ids = [u["did"] for u in decision_updates]
-
-            # Build parameter dict
-            params = {"ids": tuple(decision_ids)}
-            for idx, update in enumerate(decision_updates):
-                params[f"a{idx}"] = update["a_cost"]
-                params[f"b{idx}"] = update["b_cost"]
-                params[f"t{idx}"] = update["total_cost"]
-                params[f"p{idx}"] = update["payout"]
-                params[f"o{idx}"] = update["others_A"]
-                params[f"id{idx}"] = update["did"]
-
-            # Build CASE statements
-            cases = []
-            for i in range(len(decision_updates)):
-                cases.append(f"WHEN :id{i} THEN :a{i}")
-            a_case = " ".join(cases)
-
-            cases = []
-            for i in range(len(decision_updates)):
-                cases.append(f"WHEN :id{i} THEN :b{i}")
-            b_case = " ".join(cases)
-
-            cases = []
-            for i in range(len(decision_updates)):
-                cases.append(f"WHEN :id{i} THEN :t{i}")
-            t_case = " ".join(cases)
-
-            cases = []
-            for i in range(len(decision_updates)):
-                cases.append(f"WHEN :id{i} THEN :p{i}")
-            p_case = " ".join(cases)
-
-            cases = []
-            for i in range(len(decision_updates)):
-                cases.append(f"WHEN :id{i} THEN :o{i}")
-            o_case = " ".join(cases)
-
-            # Execute single UPDATE with CASE
-            conn.execute(text(f"""
-                UPDATE decisions
-                SET
-                    a_cost = CASE id {a_case} END,
-                    b_cost = CASE id {b_case} END,
-                    total_cost = CASE id {t_case} END,
-                    payout = CASE id {p_case} END,
-                    others_A = CASE id {o_case} END
-                WHERE id IN :ids AND total_cost IS NULL
-            """), params)
-
-        # Batch update participants balance (similar optimization)
-        if participant_updates:
-            participant_ids = [u["pid"] for u in participant_updates]
-            params = {"ids": tuple(participant_ids)}
-            for idx, update in enumerate(participant_updates):
-                params[f"p{idx}"] = update["payout"]
-                params[f"id{idx}"] = update["pid"]
-
-            cases = []
-            for i in range(len(participant_updates)):
-                cases.append(f"WHEN :id{i} THEN :p{i}")
-            p_case = " ".join(cases)
-
-            conn.execute(text(f"""
+            conn.execute(text("""
                 UPDATE participants
-                SET balance = CASE id {p_case} END
-                WHERE id IN :ids
-            """), params)
+                SET balance = :payout
+                WHERE id = :pid
+            """), {"payout": payout, "pid": pid})
 
         conn.commit()
 
