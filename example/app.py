@@ -77,11 +77,12 @@ DB_NAME = os.environ.get("DB_NAME", "GameTheoryUDE26$vaccination_game")
 DB_PORT = int(os.environ.get("DB_PORT", "3306"))
 
 # Create engine with connection pooling (prevents "too many connections" error)
+# For 150+ simultaneous players, we need larger pool
 db_engine = create_engine(
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
     poolclass=QueuePool,
-    pool_size=10,           # Max 10 persistent connections
-    max_overflow=20,        # Up to 20 additional connections in peaks
+    pool_size=50,           # Max 50 persistent connections (sufficient for 150+ players)
+    max_overflow=50,        # Up to 50 additional connections in peaks
     pool_pre_ping=True,     # Check connection health before using
     pool_recycle=3600,      # Recycle connections after 1 hour
     echo=False,             # Don't log SQL queries
@@ -110,6 +111,36 @@ def utc_now():
 def iso_utc(dt):
     """Convert datetime to ISO string with Z suffix."""
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# Cleanup old active_participants entries to prevent memory leak
+def cleanup_inactive_participants():
+    """Remove stale entries from active_participants (older than 2 hours)."""
+    import threading
+    while True:
+        time.sleep(600)  # Run every 10 minutes
+
+        with active_participants_lock:
+            current_time = time.time()
+            stale_threshold = 7200  # 2 hours in seconds
+
+            # Find stale participants
+            stale_ids = [
+                pid for pid, data in active_participants.items()
+                if current_time - data.get('last_activity', 0) > stale_threshold
+            ]
+
+            # Remove stale entries
+            for pid in stale_ids:
+                del active_participants[pid]
+                print(f'[CLEANUP] Removed stale participant: {pid}')
+
+            if stale_ids:
+                print(f'[CLEANUP] Removed {len(stale_ids)} stale participants. Active: {len(active_participants)}')
+
+# Start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_inactive_participants, daemon=True)
+cleanup_thread.start()
 
 
 def get_participant_state():
@@ -1988,8 +2019,25 @@ def handle_ready_update(data):
 
 
 @socketio.on('disconnect')
-def test_disconnect(reason):
-    print('Client disconnected', request.sid, reason)
+def handle_disconnect(reason):
+    """Clean up when client disconnects."""
+    print(f'Client disconnected: {request.sid}, reason: {reason}')
+
+    # Get participant info from session
+    participant_id = session.get('participant_id')
+    session_id = session.get('session_id')
+
+    if participant_id:
+        # Clean up active_participants tracking
+        with active_participants_lock:
+            if participant_id in active_participants:
+                print(f'Removing {participant_id} from active_participants')
+                del active_participants[participant_id]
+
+    # Leave all socket rooms to free memory
+    if session_id:
+        leave_room(f"session_{session_id}")
+        print(f'Participant {participant_id} left session room {session_id}')
 
 
 if __name__ == '__main__':
