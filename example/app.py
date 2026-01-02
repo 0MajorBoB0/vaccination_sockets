@@ -1,4 +1,5 @@
 from threading import Lock
+import threading
 from flask import Flask, render_template, session, request, \
     copy_current_request_context, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room, \
@@ -116,7 +117,6 @@ def iso_utc(dt):
 # Cleanup old active_participants entries to prevent memory leak
 def cleanup_inactive_participants():
     """Remove stale entries from active_participants (older than 2 hours)."""
-    import threading
     while True:
         time.sleep(600)  # Run every 10 minutes
 
