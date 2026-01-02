@@ -1107,13 +1107,13 @@ def join():
                 # Notify all participants in this session's lobby via Socket.IO
                 socketio.emit('lobby_update', {
                     'joined': new_join_number
-                }, room=f"session_{participant['session_id']}")
+                }, room=f"session_{participant['session_id']}", compress=True)
 
                 # Also notify admin room
                 socketio.emit('lobby_update', {
                     'session_id': participant['session_id'],
                     'joined': new_join_number
-                }, room='admin_room')
+                }, room='admin_room', compress=True)
 
             return redirect(url_for("lobby"))
 
@@ -1311,13 +1311,13 @@ def choose():
             socketio.emit('round_decision', {
                 'round': r,
                 'decided': True
-            }, room=f"round_{session_id}_{r}")
+            }, room=f"round_{session_id}_{r}", compress=True)
 
             # Also notify admin room for live updates in detail view
             socketio.emit('round_decision', {
                 'session_id': session_id,
                 'round': r
-            }, room='admin_room')
+            }, room='admin_room', compress=True)
 
         return ({"ok": True}, 200)
 
@@ -1611,8 +1611,8 @@ def confirm_ready():
 
                     conn.commit()
 
-                    socketio.emit('game_finished', {}, room=f"session_{session_id}")
-                    socketio.emit('game_finished', {'session_id': session_id}, room='admin_room')
+                    socketio.emit('game_finished', {}, room=f"session_{session_id}", compress=True)
+                    socketio.emit('game_finished', {'session_id': session_id}, room='admin_room', compress=True)
                 else:
                     conn.execute(text("""
                         UPDATE participants
@@ -1624,13 +1624,13 @@ def confirm_ready():
 
                     socketio.emit('all_ready', {
                         'next_round': current_round + 1
-                    }, room=f"session_{session_id}")
+                    }, room=f"session_{session_id}", compress=True)
 
                     # Also notify admin room
                     socketio.emit('all_ready', {
                         'session_id': session_id,
                         'next_round': current_round + 1
-                    }, room='admin_room')
+                    }, room='admin_room', compress=True)
 
         return ({"ok": True}, 200)
 
